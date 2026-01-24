@@ -36,7 +36,7 @@ def view_tasks(tasks):
     print("-"*40)
 
 def add_task(tasks):
-    """Add a new task to the list"""
+    # Add a new task to the list
     print("\n" + "-"*40)
     print("ADD NEW TASK")
     print("-"*40)
