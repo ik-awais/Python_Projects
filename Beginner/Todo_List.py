@@ -1,4 +1,4 @@
-# To do List using Basic Concepts
+# To-Do List using Basic Concepts
 # Simple To-Do List Manager
 
 def display_menu():
@@ -24,7 +24,7 @@ def view_tasks(tasks):
     print("-"*40)
     
     for i, task in enumerate(tasks, 1):
-        status = "✓" if task["completed"] else " "
+        status = "✅" if task["completed"] else " "
         print(f"{i}. [{status}] {task['description']}")
     
     # Count completed vs pending tasks
