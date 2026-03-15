@@ -1,0 +1,28 @@
+# File Workshop — Python dependencies
+# Run:  pip install -r requirements.txt
+
+# ── Core (required) ──────────────────────────────────────────────────────────
+pypdf>=4.0.0           # PDF read/write/split
+pdfplumber>=0.10.0     # PDF text extraction
+python-docx>=1.1.0     # Word document read/write
+reportlab>=4.0.0       # TXT → PDF generation
+
+# ── Image support ────────────────────────────────────────────────────────────
+Pillow>=10.0.0         # Image conversions (PNG/JPG/WEBP/BMP etc.)
+pdf2image>=1.17.0      # PDF → images  (also needs poppler — see README)
+
+# ── HTML → PDF ───────────────────────────────────────────────────────────────
+weasyprint>=60.0       # HTML → PDF  (optional alternative: wkhtmltopdf)
+
+# ── DOCX → PDF (Windows/Mac alternative to LibreOffice) ─────────────────────
+# docx2pdf>=0.1.8      # Uncomment on Windows/Mac if LibreOffice not installed
+
+# ── Audio / Video ────────────────────────────────────────────────────────────
+# ffmpeg is a SYSTEM package, not a pip package.
+# Install separately:
+#   Ubuntu/Debian:  sudo apt install ffmpeg
+#   macOS:          brew install ffmpeg
+#   Windows:        https://ffmpeg.org/download.html
+
+# ── Optional extras ──────────────────────────────────────────────────────────
+tqdm>=4.60.0           # Progress bars (optional)
