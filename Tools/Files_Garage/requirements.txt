@@ -1,28 +1,35 @@
-# File Workshop — Python dependencies
+# File Workshop v4 — Python dependencies
 # Run:  pip install -r requirements.txt
 
-# ── Core (required) ──────────────────────────────────────────────────────────
-pypdf>=4.0.0           # PDF read/write/split
-pdfplumber>=0.10.0     # PDF text extraction
-python-docx>=1.1.0     # Word document read/write
-reportlab>=4.0.0       # TXT → PDF generation
+# ── Core ─────────────────────────────────────────────────────────────────────
+pypdf>=4.0.0           # PDF read / write / split / merge
+pdfplumber>=0.10.0     # PDF text + table extraction
+python-docx>=1.1.0     # Word document support
+reportlab>=4.0.0       # TXT/CSV → PDF generation
 
-# ── Image support ────────────────────────────────────────────────────────────
-Pillow>=10.0.0         # Image conversions (PNG/JPG/WEBP/BMP etc.)
-pdf2image>=1.17.0      # PDF → images  (also needs poppler — see README)
+# ── Office formats ────────────────────────────────────────────────────────────
+openpyxl>=3.1.0        # Excel (.xlsx) read / write
+python-pptx>=0.6.23   # PowerPoint (.pptx) read / write
 
-# ── HTML → PDF ───────────────────────────────────────────────────────────────
-weasyprint>=60.0       # HTML → PDF  (optional alternative: wkhtmltopdf)
+# ── Images ────────────────────────────────────────────────────────────────────
+Pillow>=10.0.0         # Image conversions
+pdf2image>=1.17.0      # PDF / PPTX → images  (also needs poppler)
 
-# ── DOCX → PDF (Windows/Mac alternative to LibreOffice) ─────────────────────
-# docx2pdf>=0.1.8      # Uncomment on Windows/Mac if LibreOffice not installed
+# ── HTML → PDF ────────────────────────────────────────────────────────────────
+weasyprint>=60.0       # HTML → PDF
 
-# ── Audio / Video ────────────────────────────────────────────────────────────
-# ffmpeg is a SYSTEM package, not a pip package.
-# Install separately:
+# ── System packages (install separately, NOT via pip) ─────────────────────────
+# LibreOffice — Office ↔ PDF conversion (XLSX, PPTX, DOCX → PDF etc.)
+#   Ubuntu/Debian:  sudo apt install libreoffice
+#   macOS:          brew install --cask libreoffice
+#   Windows:        https://libreoffice.org
+#
+# poppler-utils — PDF/PPTX → images, text watermark
+#   Ubuntu/Debian:  sudo apt install poppler-utils
+#   macOS:          brew install poppler
+#   Windows:        https://github.com/oschwartz10612/poppler-windows
+#
+# ffmpeg — audio / video conversions
 #   Ubuntu/Debian:  sudo apt install ffmpeg
 #   macOS:          brew install ffmpeg
 #   Windows:        https://ffmpeg.org/download.html
-
-# ── Optional extras ──────────────────────────────────────────────────────────
-tqdm>=4.60.0           # Progress bars (optional)
