@@ -28,6 +28,8 @@ from core.processor import (
     compress_pdf, encrypt_pdf, decrypt_pdf,
     watermark_text, watermark_pdf_overlay,
     get_metadata, set_metadata,
+    video_split, video_merge, video_get_duration, format_duration,
+    _parse_time, audio_split,
     HAS_PYPDF, HAS_PDFPLUMBER, HAS_DOCX, HAS_PIL,
     HAS_PDF2IMAGE, HAS_FFMPEG, HAS_OPENPYXL, HAS_PPTX, HAS_LIBREOFFICE,
     IMAGE_EXTS, AUDIO_EXTS, VIDEO_EXTS, EXCEL_EXTS, PPTX_EXTS, CSV_EXTS
@@ -136,6 +138,7 @@ class AIWorkshopApp(tk.Tk):
         ("🔄", "Convert",   "convert"),
         ("✂️",  "Split",     "split"),
         ("🔗", "Merge",     "merge"),
+        ("🎬", "Video",     "video"),
         ("📐", "Organise",  "organise"),
         ("🖼",  "Upscale",   "upscale"),
         ("💧", "Stamp",     "stamp"),
@@ -267,6 +270,7 @@ class AIWorkshopApp(tk.Tk):
         self._build_convert_page()
         self._build_split_page()
         self._build_merge_page()
+        self._build_video_page()
         self._build_organise_page()
         self._build_upscale_page()
         self._build_stamp_page()
@@ -734,6 +738,157 @@ class AIWorkshopApp(tk.Tk):
 
         mk_big_btn(f, "▶  RUN MERGE", self._run_merge).pack(pady=12)
 
+    def _build_video_page(self):
+        f = self.pages["video"]
+        section_hdr(f, "VIDEO / AUDIO TOOLS", "Split by time or merge multiple files — requires ffmpeg")
+
+        if not HAS_FFMPEG:
+            warn_card = card(f)
+            tk.Label(warn_card,
+                     text="⚠  ffmpeg not found.\n\n"
+                          "Install it with:\n"
+                          "  Ubuntu/Debian:  sudo apt install ffmpeg\n"
+                          "  macOS:          brew install ffmpeg\n"
+                          "  Windows:        https://ffmpeg.org/download.html",
+                     font=("Consolas", 10), bg=PANEL, fg=WARN,
+                     justify="left").pack(anchor="w")
+
+        # Active file info
+        info_c = card(f)
+        self.video_info_lbl = tk.Label(info_c,
+            text="Add a video or audio file to the queue, then configure below.",
+            font=F["small"], bg=PANEL, fg=TEXT2, wraplength=620, justify="left")
+        self.video_info_lbl.pack(anchor="w")
+        self.video_duration_lbl = tk.Label(info_c, text="",
+            font=("Consolas", 10, "bold"), bg=PANEL, fg=ACCENT3)
+        self.video_duration_lbl.pack(anchor="w", pady=(4, 0))
+        mk_btn(info_c, "📏 Load Duration", self._video_load_duration, BORDER2).pack(anchor="w", pady=(6, 0))
+
+        # Operation selector
+        op_c = card(f)
+        lbl(op_c, "OPERATION", head=True).pack(anchor="w", pady=(0, 8))
+        self.video_op = tk.StringVar(value="split")
+        for val, label, tip in [
+            ("split", "Split by time",   "Cut into segments using start/end timestamps"),
+            ("merge", "Merge files",     "Join multiple video/audio files into one"),
+        ]:
+            r = tk.Frame(op_c, bg=PANEL); r.pack(anchor="w", pady=2)
+            tk.Radiobutton(r, text=label, variable=self.video_op, value=val,
+                           font=F["body"], bg=PANEL, fg=TEXT,
+                           selectcolor=ACCENT, activebackground=PANEL,
+                           command=self._update_video_ui, cursor="hand2").pack(side="left")
+            lbl(r, f"  — {tip}", dim=True).pack(side="left")
+
+        # Dynamic options area
+        self.video_opts = card(f)
+        self._update_video_ui()
+
+        # Output settings
+        out_row = tk.Frame(f, bg=BG); out_row.pack(fill="x", padx=14, pady=2)
+        lbl(out_row, "Output name:", w=14).pack(side="left")
+        self.video_out_name = tk.StringVar(value="output")
+        entry(out_row, self.video_out_name, width=22).pack(side="left", padx=(6, 4), ipady=4)
+        lbl(out_row, "  (for merge only — split uses auto names)", dim=True).pack(side="left")
+
+        btn_row = tk.Frame(f, bg=BG); btn_row.pack(pady=12)
+        mk_big_btn(btn_row, "▶  RUN", self._run_video, "#e91e8c").pack(side="left", padx=6)
+        mk_btn(btn_row, "🤖 AI: Suggest Settings", self._ai_video_suggest,
+               ACCENT3, pady=10).pack(side="left", padx=6)
+
+    def _update_video_ui(self):
+        for w in self.video_opts.winfo_children(): w.destroy()
+        op = self.video_op.get(); f = self.video_opts
+
+        if op == "split":
+            lbl(f, "TIME FORMAT:  HH:MM:SS  or  MM:SS  or  seconds  (e.g.  90  or  1:30  or  0:01:30)",
+                dim=True).pack(anchor="w", pady=(0, 8))
+
+            # Segments table header
+            hdr_row = tk.Frame(f, bg=PANEL); hdr_row.pack(fill="x", pady=(0, 4))
+            for txt, w in [("#", 3), ("Start time", 14), ("End time", 14), ("", 6)]:
+                tk.Label(hdr_row, text=txt, font=("Consolas", 9, "bold"),
+                         bg=PANEL, fg=TEXT2, width=w, anchor="w").pack(side="left", padx=4)
+
+            # Scrollable segments frame
+            seg_outer = tk.Frame(f, bg=PANEL)
+            seg_outer.pack(fill="x")
+            self.video_segments_frame = tk.Frame(seg_outer, bg=PANEL)
+            self.video_segments_frame.pack(fill="x")
+            self.video_segment_rows: List[tuple] = []  # (start_var, end_var, row_frame)
+
+            # Add initial 3 rows
+            for _ in range(3):
+                self._add_segment_row()
+
+            add_row = tk.Frame(f, bg=PANEL); add_row.pack(anchor="w", pady=(6, 0))
+            mk_btn(add_row, "+ Add Segment", self._add_segment_row, BORDER2).pack(side="left")
+            mk_btn(add_row, "✖ Remove Last", self._remove_last_segment, BORDER2).pack(side="left", padx=(6, 0))
+
+            lbl(f, 'Tip: Use "end" as the End time to go to the end of the file.',
+                dim=True).pack(anchor="w", pady=(8, 0))
+
+            pr_row = tk.Frame(f, bg=PANEL); pr_row.pack(fill="x", pady=(8, 0))
+            lbl(pr_row, "File prefix:", w=12).pack(side="left")
+            self.video_prefix = tk.StringVar(value="segment")
+            entry(pr_row, self.video_prefix, width=16).pack(side="left", padx=(6, 12), ipady=4)
+            lbl(pr_row, "Output format:", w=14, dim=True).pack(side="left")
+            self.video_fmt = tk.StringVar(value="")
+            entry(pr_row, self.video_fmt, width=6).pack(side="left", padx=(4, 0), ipady=4)
+            lbl(pr_row, " (blank = same as input)", dim=True).pack(side="left", padx=(4, 0))
+
+        elif op == "merge":
+            lbl(f, "All video/audio files currently in the queue will be merged in queue order.",
+                dim=True, wrap=620).pack(anchor="w", pady=(0, 8))
+
+            # Preview
+            self.video_merge_preview = tk.Text(f, height=6, font=F["mono_sm"],
+                                                bg=LOG_BG, fg=TEXT2, relief="flat",
+                                                state="disabled", bd=0)
+            self.video_merge_preview.pack(fill="x", padx=2)
+            mk_btn(f, "↻ Refresh Preview", self._refresh_video_merge_preview,
+                   BORDER2).pack(anchor="w", pady=(6, 0))
+            self._refresh_video_merge_preview()
+
+            fmt_row = tk.Frame(f, bg=PANEL); fmt_row.pack(fill="x", pady=(10, 0))
+            lbl(fmt_row, "Output format:", w=14, dim=True).pack(side="left")
+            self.video_merge_fmt = tk.StringVar(value="mp4")
+            for fmt in ["mp4", "mkv", "avi", "mov", "mp3", "wav"]:
+                tk.Radiobutton(fmt_row, text=fmt, variable=self.video_merge_fmt, value=fmt,
+                               font=F["btn"], bg=PANEL, fg=TEXT2,
+                               selectcolor=ACCENT, activebackground=PANEL,
+                               cursor="hand2").pack(side="left", padx=(0, 10))
+
+    def _add_segment_row(self):
+        if not hasattr(self, "video_segment_rows"):
+            self.video_segment_rows = []
+        i = len(self.video_segment_rows) + 1
+        row = tk.Frame(self.video_segments_frame, bg=PANEL)
+        row.pack(fill="x", pady=2)
+        tk.Label(row, text=f"{i:2d}.", font=("Consolas", 10),
+                 bg=PANEL, fg=TEXT2, width=3).pack(side="left", padx=4)
+        start_var = tk.StringVar(value="0:00:00")
+        end_var   = tk.StringVar(value="end")
+        entry(row, start_var, width=14).pack(side="left", padx=4, ipady=4)
+        entry(row, end_var,   width=14).pack(side="left", padx=4, ipady=4)
+        self.video_segment_rows.append((start_var, end_var, row))
+
+    def _remove_last_segment(self):
+        if hasattr(self, "video_segment_rows") and len(self.video_segment_rows) > 1:
+            _, _, row = self.video_segment_rows.pop()
+            row.destroy()
+
+    def _refresh_video_merge_preview(self):
+        if not hasattr(self, "video_merge_preview"): return
+        av_files = [f for f in self.files if cat(f) in ("video", "audio")]
+        self.video_merge_preview.config(state="normal")
+        self.video_merge_preview.delete("1.0", "end")
+        if not av_files:
+            self.video_merge_preview.insert("end", "  No video/audio files in queue.")
+        else:
+            for i, fp in enumerate(av_files, 1):
+                self.video_merge_preview.insert("end", f"  {i:2d}.  {cat_icon(cat(fp))}  {Path(fp).name}\n")
+        self.video_merge_preview.config(state="disabled")
+
     def _build_organise_page(self):
         f = self.pages["organise"]
         section_hdr(f, "ORGANISE PDF", "Resequence · Delete · Rotate · Reverse pages")
@@ -869,24 +1024,80 @@ class AIWorkshopApp(tk.Tk):
 
     def _build_queue_page(self):
         f = self.pages["queue"]
-        section_hdr(f, "FILE QUEUE", "Manage staged files — double-click to set AI context file")
-        lf = tk.Frame(f, bg=PANEL); lf.pack(fill="both", expand=True, padx=12, pady=(0, 6))
-        self.queue_lb = tk.Listbox(lf, font=F["body"],
-                                    bg=CARD2, fg=TEXT,
-                                    selectbackground=ACCENT,
-                                    activestyle="none", relief="flat", bd=0,
-                                    selectmode="extended")
+        section_hdr(f, "FILE QUEUE", "Manage staged files — Ctrl+click multi-select · double-click sets AI context")
+
+        # Selection info bar
+        sel_bar = tk.Frame(f, bg=BG); sel_bar.pack(fill="x", padx=12, pady=(0, 4))
+        self.queue_sel_lbl = tk.Label(sel_bar,
+            text="Tip: Ctrl+click to select multiple, then click ✖ Remove Selected",
+            font=F["small"], bg=BG, fg=TEXT2)
+        self.queue_sel_lbl.pack(side="left")
+        self.queue_count_lbl = tk.Label(sel_bar, text="",
+            font=("Consolas", 9, "bold"), bg=BG, fg=ACCENT3)
+        self.queue_count_lbl.pack(side="right")
+
+        # Listbox
+        lf = tk.Frame(f, bg=PANEL)
+        lf.pack(fill="both", expand=True, padx=12, pady=(0, 6))
+        self.queue_lb = tk.Listbox(
+            lf, font=F["body"],
+            bg=CARD2, fg=TEXT,
+            selectbackground=ACCENT,
+            activestyle="none", relief="flat", bd=0,
+            selectmode="extended")
         sb2 = tk.Scrollbar(lf, orient="vertical", command=self.queue_lb.yview)
         self.queue_lb.config(yscrollcommand=sb2.set)
         self.queue_lb.pack(side="left", fill="both", expand=True)
         sb2.pack(side="right", fill="y")
-        self.queue_lb.bind("<Double-Button-1>", self._queue_select_for_ai)
+
+        # Bindings
+        self.queue_lb.bind("<Double-Button-1>",  self._queue_select_for_ai)
+        self.queue_lb.bind("<<ListboxSelect>>",  self._on_queue_select)
+        self.queue_lb.bind("<Button-3>",          self._queue_right_click)  # right-click menu
+        self.queue_lb.bind("<Delete>",            lambda e: self._remove_selected())
+
+        # Button bar
         br = tk.Frame(f, bg=BG); br.pack(fill="x", padx=12, pady=(0, 4))
-        for label, cmd in [("↑ Up",self._move_up),("↓ Down",self._move_down),
-                            ("✖ Remove",self._remove_selected),("🗑 Clear",self._clear_queue)]:
-            mk_btn(br, label, cmd, BORDER2).pack(side="left", padx=(0, 6))
-        mk_btn(br, "🤖 AI Analyse Selected", self._ai_analyse_selected,
-               ACCENT3).pack(side="right")
+
+        # Left side — reorder + remove
+        left_btns = tk.Frame(br, bg=BG); left_btns.pack(side="left")
+        mk_btn(left_btns, "↑ Up",   self._move_up,   BORDER2).pack(side="left", padx=(0, 4))
+        mk_btn(left_btns, "↓ Down", self._move_down, BORDER2).pack(side="left", padx=(0, 12))
+
+        # Remove Selected — highlighted so users know it's per-selection
+        self.remove_sel_btn = tk.Button(
+            left_btns, text="✖  Remove Selected",
+            command=self._remove_selected,
+            font=F["btn"], bg="#5a1a1a", fg="#ff9999",
+            activebackground=ACCENT2, activeforeground="#ffffff",
+            relief="flat", cursor="hand2", padx=12, pady=5, bd=0)
+        self.remove_sel_btn.pack(side="left", padx=(0, 4))
+        Tooltip(self.remove_sel_btn,
+                "Removes only the highlighted/selected items.\n"
+                "Use Ctrl+click to select multiple files.\n"
+                "Press Delete key also works.")
+
+        mk_btn(left_btns, "🗑 Clear All", self._clear_queue, BORDER2).pack(side="left", padx=(0, 4))
+
+        # Right side — AI + select-all
+        right_btns = tk.Frame(br, bg=BG); right_btns.pack(side="right")
+        mk_btn(right_btns, "☑ Select All",   self._select_all_queue, BORDER2).pack(side="left", padx=(0, 6))
+        mk_btn(right_btns, "🤖 AI Analyse",  self._ai_analyse_selected, ACCENT3).pack(side="left")
+
+        # Right-click context menu (created once, reused)
+        self._queue_ctx_menu = tk.Menu(self, tearoff=0,
+                                        bg=CARD2, fg=TEXT,
+                                        activebackground=ACCENT,
+                                        activeforeground="#ffffff",
+                                        font=F["body"])
+        self._queue_ctx_menu.add_command(label="✖  Remove Selected",  command=self._remove_selected)
+        self._queue_ctx_menu.add_command(label="☑  Select All",        command=self._select_all_queue)
+        self._queue_ctx_menu.add_separator()
+        self._queue_ctx_menu.add_command(label="↑  Move Up",           command=self._move_up)
+        self._queue_ctx_menu.add_command(label="↓  Move Down",         command=self._move_down)
+        self._queue_ctx_menu.add_separator()
+        self._queue_ctx_menu.add_command(label="🤖 AI Analyse",        command=self._ai_analyse_selected)
+        self._queue_ctx_menu.add_command(label="📎 Set as AI context",  command=self._queue_select_for_ai)
 
     # ══════════════════════════════════════════════════════════════════════════
     # DYNAMIC SUB-UIs
@@ -1130,6 +1341,129 @@ class AIWorkshopApp(tk.Tk):
                 self.after(300, self._open_output)
             except Exception as ex: self._log(f"ERROR: {ex}", "err")
         threading.Thread(target=task, daemon=True).start()
+
+    # ── Video run handlers ────────────────────────────────────────────────────
+
+    def _video_load_duration(self):
+        """Load and display duration of the first video/audio file in queue."""
+        av = [f for f in self.files if cat(f) in ("video", "audio")]
+        if not av:
+            messagebox.showinfo("No Media", "Add a video or audio file to the queue first.")
+            return
+        if not HAS_FFMPEG:
+            self._log("⚠ ffmpeg not found — sudo apt install ffmpeg", "err")
+            return
+        src = av[0]
+        def task():
+            try:
+                dur = video_get_duration(src)
+                dur_str = format_duration(dur)
+                self.after(0, lambda: self.video_info_lbl.config(
+                    text=f"File: {Path(src).name}", fg=TEXT))
+                self.after(0, lambda: self.video_duration_lbl.config(
+                    text=f"⏱  Duration: {dur_str}  ({dur:.1f} seconds)"))
+                self._log(f"Duration of {Path(src).name}: {dur_str}", "info")
+            except Exception as e:
+                self._log(f"Could not read duration: {e}", "err")
+        threading.Thread(target=task, daemon=True).start()
+
+    def _run_video(self):
+        out = self._require_out()
+        if not out: return
+        if not HAS_FFMPEG:
+            messagebox.showerror("ffmpeg Missing",
+                "ffmpeg is required for video/audio operations.\n\n"
+                "Install: sudo apt install ffmpeg")
+            return
+        op = self.video_op.get()
+
+        if op == "split":
+            av = [f for f in self.files if cat(f) in ("video", "audio")]
+            if not av:
+                messagebox.showwarning("No Media", "Add a video or audio file to the queue.")
+                return
+            src = av[0]
+
+            # Build segments list from the rows
+            if not hasattr(self, "video_segment_rows") or not self.video_segment_rows:
+                messagebox.showwarning("No Segments", "Add at least one segment.")
+                return
+
+            segments = []
+            for i, (sv, ev, _) in enumerate(self.video_segment_rows, 1):
+                start = sv.get().strip()
+                end   = ev.get().strip()
+                if not start:
+                    messagebox.showerror("Empty Start",
+                        f"Segment {i}: start time cannot be empty.")
+                    return
+                try:
+                    _parse_time(start)  # validate
+                    if end.lower() not in ("end", ""):
+                        _parse_time(end)
+                except ValueError as e:
+                    messagebox.showerror("Invalid Time", f"Segment {i}: {e}")
+                    return
+                segments.append((start, end or "end"))
+
+            prefix = self.video_prefix.get().strip() or "segment"
+            fmt    = self.video_fmt.get().strip().lstrip(".")
+
+            def task():
+                try:
+                    self._log(f"Splitting {Path(src).name} into {len(segments)} segment(s) …")
+                    files = video_split(src, segments, out, prefix, fmt)
+                    for fp in files:
+                        sz = os.path.getsize(fp) / (1024*1024)
+                        self._log(f"✔ {Path(fp).name}  ({sz:.1f} MB)", "ok")
+                    self._log(f"Split complete — {len(files)} segment(s) saved.", "info")
+                    self._status(f"Split done — {len(files)} segments")
+                    self.after(300, self._open_output)
+                except Exception as ex:
+                    self._log(f"ERROR: {ex}", "err")
+            threading.Thread(target=task, daemon=True).start()
+
+        elif op == "merge":
+            av = [f for f in self.files if cat(f) in ("video", "audio")]
+            if len(av) < 2:
+                messagebox.showwarning("Need 2+ Files",
+                    "Add at least 2 video or audio files to the queue.")
+                return
+            ext  = self.video_merge_fmt.get().strip() or "mp4"
+            name = (self.video_out_name.get().strip() or "output") + "." + ext
+            dst  = os.path.join(out, name)
+
+            def task():
+                try:
+                    self._log(f"Merging {len(av)} file(s) → {name} …")
+                    video_merge(av, dst, log=self._log)
+                    sz = os.path.getsize(dst) / (1024*1024)
+                    self._log(f"✔ {Path(dst).name}  ({sz:.1f} MB)", "ok")
+                    self._status(f"Merge done — {Path(dst).name}")
+                    self.after(300, self._open_output)
+                except Exception as ex:
+                    self._log(f"ERROR: {ex}", "err")
+            threading.Thread(target=task, daemon=True).start()
+
+    def _ai_video_suggest(self):
+        """Ask AI for advice about the current video/audio file."""
+        av = [f for f in self.files if cat(f) in ("video", "audio")]
+        if not av:
+            self._ai_sys("⚠  Add a video or audio file to the queue first.")
+            return
+        if not self.ai.is_ready:
+            self._ai_sys("⚠  Configure AI in Settings first.")
+            return
+        src = av[0]
+        ext = Path(src).suffix.lower()
+        prompt = (
+            f"I have a {cat(src)} file: {Path(src).name} ({ext})\n"
+            f"I want to split it into segments or merge it with other files.\n"
+            f"What format should I use for the output? Any tips on ffmpeg settings "
+            f"for best quality vs file size? Keep it brief and practical."
+        )
+        self._ai_user(f"Suggest settings for: {Path(src).name}")
+        self.ai.chat(prompt, on_done=self._ai_response, on_error=self._ai_error)
 
     def _run_organise(self):
         src = self._require_pdf("Organise"); out = self._require_out()
@@ -1625,8 +1959,17 @@ class AIWorkshopApp(tk.Tk):
             self.upscale_info_lbl.config(
                 text=f"{len(images)} image(s) ready to upscale. Click 'Preview Info' to inspect.",
                 fg=SUCCESS)
+        av = [f for f in self.files if cat(f) in ("video","audio")]
+        if av:
+            self.video_info_lbl.config(
+                text=f"{len(av)} video/audio file(s) loaded. First: {Path(av[0]).name}",
+                fg=SUCCESS)
+            self.video_duration_lbl.config(text="")
         if n > 0:
             self.file_badge.config(text=f"{n} file(s) loaded", fg=TEXT2)
+        # Update queue selection label
+        if hasattr(self, "queue_count_lbl"):
+            self.queue_count_lbl.config(text=f"{n} file(s)" if n else "")
         self._update_ai_file_menu()
         self._refresh_merge_preview()
         self._refresh_home_files()
@@ -1683,8 +2026,53 @@ class AIWorkshopApp(tk.Tk):
 
     def _remove_selected(self):
         sel = list(self.queue_lb.curselection())
-        for i in reversed(sel): self.files.pop(i); self.queue_lb.delete(i)
+        if not sel:
+            self._status("Nothing selected — use Ctrl+click to select files first")
+            return
+        for i in reversed(sel):
+            self.files.pop(i)
+            self.queue_lb.delete(i)
+        n = len(sel)
+        self._log(f"Removed {n} file(s) from queue.", "info")
         self._update_after_files()
+        self._on_queue_select()  # reset selection label
+
+    def _on_queue_select(self, _=None):
+        """Update the selection count label whenever selection changes."""
+        sel = self.queue_lb.curselection()
+        total = len(self.files)
+        if sel:
+            self.queue_sel_lbl.config(
+                text=f"{len(sel)} selected — click ✖ Remove Selected to remove them",
+                fg=WARN)
+            self.queue_count_lbl.config(text=f"{len(sel)} / {total} selected")
+            self.remove_sel_btn.config(bg=ACCENT2, fg="#ffffff")
+        else:
+            self.queue_sel_lbl.config(
+                text="Tip: Ctrl+click to select multiple, then click ✖ Remove Selected",
+                fg=TEXT2)
+            self.queue_count_lbl.config(text=f"{total} file(s)" if total else "")
+            self.remove_sel_btn.config(bg="#5a1a1a", fg="#ff9999")
+
+    def _queue_right_click(self, event):
+        """Show context menu on right-click in queue listbox."""
+        # Select the item under cursor if nothing selected
+        idx = self.queue_lb.nearest(event.y)
+        if idx >= 0:
+            cur_sel = self.queue_lb.curselection()
+            if idx not in cur_sel:
+                self.queue_lb.selection_clear(0, "end")
+                self.queue_lb.selection_set(idx)
+                self._on_queue_select()
+        try:
+            self._queue_ctx_menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            self._queue_ctx_menu.grab_release()
+
+    def _select_all_queue(self):
+        """Select all items in the queue listbox."""
+        self.queue_lb.selection_set(0, "end")
+        self._on_queue_select()
 
     def _clear_queue(self):
         self.files.clear(); self.queue_lb.delete(0,"end")
@@ -1753,7 +2141,9 @@ class AIWorkshopApp(tk.Tk):
                      fg="#ffffff" if k==key else TEXT2)
         for k, page in self.pages.items(): page.pack_forget()
         self.pages[key].pack(fill="both", expand=True)
-        if key=="merge": self._refresh_merge_preview()
+        if key == "merge":  self._refresh_merge_preview()
+        if key == "video":  self._refresh_video_merge_preview()
+        if key == "queue":  self._on_queue_select()
 
     def _update_ai_status(self):
         if self.ai.is_ready:

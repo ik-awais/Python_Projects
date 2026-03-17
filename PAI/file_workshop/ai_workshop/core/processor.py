@@ -483,6 +483,173 @@ def ffmpeg_convert(src,dst,extra=None):
     if not Path(dst).exists(): raise RuntimeError(f"ffmpeg failed:\n{r.stderr[-400:]}")
     return dst
 
+# ── Video / Audio operations ──────────────────────────────────────────────────
+
+def video_get_duration(src: str) -> float:
+    """Return video/audio duration in seconds using ffprobe."""
+    if not HAS_FFMPEG:
+        raise RuntimeError("ffmpeg not found.")
+    cmd = ["ffprobe", "-v", "error",
+           "-show_entries", "format=duration",
+           "-of", "default=noprint_wrappers=1:nokey=1",
+           src]
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    try:
+        return float(r.stdout.strip())
+    except (ValueError, TypeError):
+        raise RuntimeError(f"Could not read duration from: {Path(src).name}\n{r.stderr[:300]}")
+
+def _parse_time(t: str) -> float:
+    """
+    Parse a time string into seconds.
+    Accepts:  HH:MM:SS  |  MM:SS  |  SS  |  SS.ms
+    e.g.  "1:30:00" → 5400.0   "2:45" → 165.0   "90" → 90.0
+    """
+    t = t.strip()
+    parts = t.split(":")
+    try:
+        if len(parts) == 3:
+            return int(parts[0])*3600 + int(parts[1])*60 + float(parts[2])
+        elif len(parts) == 2:
+            return int(parts[0])*60 + float(parts[1])
+        else:
+            return float(parts[0])
+    except (ValueError, IndexError):
+        raise ValueError(
+            f"Invalid time format: '{t}'\n"
+            "Use HH:MM:SS, MM:SS, or seconds (e.g. 90 or 1:30)"
+        )
+
+def format_duration(seconds: float) -> str:
+    """Format seconds as HH:MM:SS string."""
+    s = int(seconds)
+    h, rem = divmod(s, 3600)
+    m, sec = divmod(rem, 60)
+    return f"{h:02d}:{m:02d}:{sec:02d}"
+
+def video_split(src: str, segments: list, out_dir: str,
+                prefix: str = "segment", fmt: str = "") -> list:
+    """
+    Split a video into segments by time.
+
+    segments: list of (start, end) tuples — each a time string or float seconds.
+              e.g. [("0", "1:30"), ("1:30", "3:00"), ("3:00", "end")]
+              Use "end" or "" as end time to mean the rest of the file.
+    out_dir:  output directory
+    prefix:   filename prefix
+    fmt:      output extension (e.g. "mp4"); defaults to same as input
+
+    Returns list of output file paths.
+    """
+    if not HAS_FFMPEG:
+        raise RuntimeError("ffmpeg not found.\n  sudo apt install ffmpeg")
+    os.makedirs(out_dir, exist_ok=True)
+    ext = fmt.lstrip(".") if fmt else Path(src).suffix.lstrip(".")
+    duration = video_get_duration(src)
+    out_files = []
+
+    for i, (start_raw, end_raw) in enumerate(segments, 1):
+        start_sec = _parse_time(str(start_raw))
+
+        # "end" or empty string means until the end of the file
+        if str(end_raw).strip().lower() in ("end", "", "0"):
+            end_sec = duration
+        else:
+            end_sec = _parse_time(str(end_raw))
+
+        if end_sec <= start_sec:
+            raise ValueError(
+                f"Segment {i}: end time ({end_raw}) must be after start time ({start_raw})"
+            )
+
+        seg_dur = end_sec - start_sec
+        start_fmt = start_raw.replace(":", "-")
+        end_fmt   = str(end_raw).replace(":", "-")
+        out_path = os.path.join(out_dir, f"{prefix}_{i:02d}_{start_fmt}_to_{end_fmt}.{ext}")
+
+        cmd = [
+            "ffmpeg", "-y",
+            "-i", src,
+            "-ss", str(start_sec),
+            "-t",  str(seg_dur),
+            "-c",  "copy",          # stream copy = fast, no re-encode
+            out_path
+        ]
+        r = subprocess.run(cmd, capture_output=True, text=True)
+        if not Path(out_path).exists():
+            raise RuntimeError(
+                f"ffmpeg failed on segment {i}:\n{r.stderr[-400:]}"
+            )
+        out_files.append(out_path)
+
+    return out_files
+
+def video_merge(src_list: list, dst: str, log=None) -> str:
+    """
+    Merge multiple video (or audio) files into one using ffmpeg concat demuxer.
+    All files should have the same codec/resolution for best results.
+    Falls back to re-encode if streams differ.
+    """
+    if not HAS_FFMPEG:
+        raise RuntimeError("ffmpeg not found.\n  sudo apt install ffmpeg")
+    if not src_list:
+        raise ValueError("No files provided for merge.")
+
+    def L(m):
+        if log: log(m)
+
+    os.makedirs(str(Path(dst).parent), exist_ok=True)
+
+    # Write concat list file
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt",
+                                     delete=False, encoding="utf-8") as tf:
+        list_path = tf.name
+        for s in src_list:
+            # ffmpeg concat requires escaped paths
+            escaped = s.replace("'", "'\\''")
+            tf.write(f"file '{escaped}'\n")
+
+    L(f"Merging {len(src_list)} files …")
+    try:
+        # First try stream-copy (fast, no quality loss)
+        cmd = [
+            "ffmpeg", "-y",
+            "-f", "concat",
+            "-safe", "0",
+            "-i", list_path,
+            "-c", "copy",
+            dst
+        ]
+        r = subprocess.run(cmd, capture_output=True, text=True)
+        if Path(dst).exists():
+            L("Merged with stream copy (fast, lossless).")
+            return dst
+
+        # Fall back to re-encode if stream copy failed
+        L("Stream copy failed — re-encoding (slower but compatible) …")
+        cmd2 = [
+            "ffmpeg", "-y",
+            "-f", "concat",
+            "-safe", "0",
+            "-i", list_path,
+            dst
+        ]
+        r2 = subprocess.run(cmd2, capture_output=True, text=True)
+        if not Path(dst).exists():
+            raise RuntimeError(f"ffmpeg merge failed:\n{r2.stderr[-600:]}")
+        L("Merged with re-encode.")
+        return dst
+    finally:
+        try:
+            os.unlink(list_path)
+        except OSError:
+            pass
+
+def audio_split(src: str, segments: list, out_dir: str,
+                prefix: str = "segment", fmt: str = "") -> list:
+    """Split an audio file by time — identical logic to video_split."""
+    return video_split(src, segments, out_dir, prefix, fmt)
+
 # ── PDF operations ────────────────────────────────────────────────────────────
 
 def split_each(src,out_dir,prefix="page"):
