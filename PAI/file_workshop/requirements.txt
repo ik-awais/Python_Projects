@@ -1,0 +1,48 @@
+# ╔══════════════════════════════════════════════════════╗
+# ║      File Workshop AI — Python Dependencies          ║
+# ║  Run:  pip install -r requirements.txt               ║
+# ╚══════════════════════════════════════════════════════╝
+
+# ── AI / Gemini ───────────────────────────────────────────────────────────────
+google-genai>=1.0.0                # Gemini API — new SDK (replaces google-generativeai)
+
+# ── PDF ───────────────────────────────────────────────────────────────────────
+pypdf>=4.0.0                   # PDF read / write / split / merge
+pdfplumber>=0.10.0             # PDF text + table extraction
+
+# ── Office Formats ────────────────────────────────────────────────────────────
+python-docx>=1.1.0             # Word document support
+openpyxl>=3.1.0                # Excel (.xlsx) read / write
+python-pptx>=0.6.23            # PowerPoint (.pptx) read / write
+
+# ── PDF Generation ────────────────────────────────────────────────────────────
+reportlab>=4.0.0               # TXT / CSV → PDF
+
+# ── Images ────────────────────────────────────────────────────────────────────
+Pillow>=10.0.0                 # Image conversions (PNG/JPG/WEBP etc.)
+pdf2image>=1.17.0              # PDF/PPTX → images  (also needs poppler)
+
+# ── HTML → PDF ────────────────────────────────────────────────────────────────
+weasyprint>=60.0               # HTML → PDF
+
+# ════════════════════════════════════════════════════════
+# SYSTEM PACKAGES  (install separately, NOT via pip)
+# ════════════════════════════════════════════════════════
+#
+# LibreOffice — Office ↔ PDF (XLSX, PPTX, DOCX → PDF)
+#   Ubuntu/Debian:   sudo apt install libreoffice
+#   macOS:           brew install --cask libreoffice
+#   Windows:         https://libreoffice.org
+#
+# poppler-utils — PDF/PPTX → images, watermark
+#   Ubuntu/Debian:   sudo apt install poppler-utils
+#   macOS:           brew install poppler
+#   Windows:         https://github.com/oschwartz10612/poppler-windows
+#
+# ffmpeg — audio / video conversions
+#   Ubuntu/Debian:   sudo apt install ffmpeg
+#   macOS:           brew install ffmpeg
+#   Windows:         https://ffmpeg.org/download.html
+#
+# tkinter — GUI (usually pre-installed)
+#   Ubuntu/Debian:   sudo apt install python3-tk
