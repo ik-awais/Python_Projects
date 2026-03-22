@@ -10,8 +10,7 @@ CONFIG_FILE = Path.home() / ".ai_workshop_config.json"
 
 DEFAULTS = {
     "gemini_api_key": "",
-    "gemini_model":   "gemini-2.0-flash",
-    "theme":          "dark",
+    "gemini_model": "meta/llama-3.1-70b-instruct",
     "output_dir":     "",
     "max_chat_history": 50,
     "auto_suggest":   True,
@@ -21,11 +20,11 @@ DEFAULTS = {
 # The new google-genai SDK requires the "models/" prefix on model names.
 # Map display names → API names used in generate_content calls.
 GEMINI_MODELS = [
-    "gemini-2.0-flash",
-    "gemini-2.0-flash-lite",
-    "gemini-1.5-flash",
-    "gemini-1.5-flash-8b",
-    "gemini-1.5-pro",
+    "meta/llama-3.3-70b-instruct",
+    "meta/llama-3.1-70b-instruct",
+    "nvidia/llama-3.1-nemotron-70b-instruct",
+    "mistralai/mistral-large-2-instruct",
+    "qwen/qwen3.5-122b-a10b",
 ]
 
 # Human-readable labels shown in the Settings UI

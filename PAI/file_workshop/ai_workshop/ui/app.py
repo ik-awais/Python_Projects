@@ -34,7 +34,7 @@ from core.processor import (
     HAS_PDF2IMAGE, HAS_FFMPEG, HAS_OPENPYXL, HAS_PPTX, HAS_LIBREOFFICE,
     IMAGE_EXTS, AUDIO_EXTS, VIDEO_EXTS, EXCEL_EXTS, PPTX_EXTS, CSV_EXTS
 )
-from ai.gemini import GeminiClient, HAS_GENAI
+from ai.nvidia_nim import NIMClient as GeminiClient, HAS_NIM as HAS_GENAI
 from ai.extractor import extract_text, get_file_summary_context, is_image, is_text_extractable
 from utils.upscaler import upscale_image, batch_upscale, get_image_info, SCALE_METHODS, HAS_PIL as UP_PIL
 
