@@ -34,7 +34,7 @@ from core.processor import (
     HAS_PDF2IMAGE, HAS_FFMPEG, HAS_OPENPYXL, HAS_PPTX, HAS_LIBREOFFICE,
     IMAGE_EXTS, AUDIO_EXTS, VIDEO_EXTS, EXCEL_EXTS, PPTX_EXTS, CSV_EXTS
 )
-from ai.nvidia_nim import NIMClient as GeminiClient, HAS_NIM as HAS_GENAI
+from ai.gemini import GeminiClient, HAS_GENAI
 from ai.extractor import extract_text, get_file_summary_context, is_image, is_text_extractable
 from utils.upscaler import upscale_image, batch_upscale, get_image_info, SCALE_METHODS, HAS_PIL as UP_PIL
 
@@ -127,6 +127,26 @@ def entry(parent, var, width=22, show=None, mono=True):
     return tk.Entry(parent, **kw)
 
 
+import re as _re
+def _clean_ai_response(text: str) -> str:
+    """
+    Remove raw JSON blocks and code fences from AI responses so the chat
+    display only shows the natural-language parts.
+    Also strips intent markers like 🎯 lines that are handled elsewhere.
+    """
+    # Remove ```json ... ``` blocks entirely
+    text = _re.sub(r"```json\s*\{.*?\}\s*```", "", text, flags=_re.DOTALL)
+    # Remove bare JSON objects that start a line (common LLM pattern)
+    text = _re.sub(r"^\s*\{[^{}]*\"action\"\s*:[^{}]*\}\s*$", "",
+                   text, flags=_re.MULTILINE | _re.DOTALL)
+    # Remove any remaining ``` code fences
+    text = _re.sub(r"```[a-z]*\n?", "", text)
+    text = text.replace("```", "")
+    # Collapse 3+ newlines to 2
+    text = _re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # MAIN APP
 # ══════════════════════════════════════════════════════════════════════════════
@@ -135,6 +155,7 @@ class AIWorkshopApp(tk.Tk):
 
     TABS = [
         ("🏠", "Home",      "home"),
+        ("🤖", "AI Chat",   "aichat"),
         ("🔄", "Convert",   "convert"),
         ("✂️",  "Split",     "split"),
         ("🔗", "Merge",     "merge"),
@@ -171,8 +192,8 @@ class AIWorkshopApp(tk.Tk):
         self.tab_btns: Dict[str, tk.Button] = {}
 
         self._build()
-        self._switch_tab("home")
-        self._status("Welcome — drop files or type a command to the AI")
+        self._switch_tab("aichat")
+        self._status("Welcome — click 🤖 AI Chat to get started")
         self._update_ai_status()
 
     # ══════════════════════════════════════════════════════════════════════════
@@ -183,8 +204,7 @@ class AIWorkshopApp(tk.Tk):
         self._build_topbar()
         body = tk.Frame(self, bg=BG); body.pack(fill="both", expand=True)
         self._build_sidebar(body)
-        self._build_chat_rail(body)   # pack RIGHT first
-        self._build_centre(body)
+        self._build_centre(body)   # full width — no more right rail
 
     # ── Topbar ────────────────────────────────────────────────────────────────
 
@@ -267,6 +287,7 @@ class AIWorkshopApp(tk.Tk):
             self.pages[key] = f
 
         self._build_home_page()
+        self._build_aichat_page()
         self._build_convert_page()
         self._build_split_page()
         self._build_merge_page()
@@ -301,113 +322,175 @@ class AIWorkshopApp(tk.Tk):
                  font=F["small"], bg=BORDER, fg=TEXT2,
                  anchor="w", padx=10, pady=3).pack(fill="x", side="bottom")
 
-    # ── AI Chat Rail (right panel) ────────────────────────────────────────────
+    # ── AI Chat  (full tab) ───────────────────────────────────────────────────
 
-    def _build_chat_rail(self, parent):
-        rail = tk.Frame(parent, bg=PANEL, width=380)
-        rail.pack(side="right", fill="y"); rail.pack_propagate(False)
+    def _build_aichat_page(self):
+        f = self.pages["aichat"]
+        f.configure(bg=BG)
 
-        # Header
-        hdr = tk.Frame(rail, bg=CARD, pady=12); hdr.pack(fill="x")
-        tk.Label(hdr, text="🤖  AI ASSISTANT",
-                 font=("Segoe UI", 11, "bold"), bg=CARD, fg=ACCENT3).pack(side="left", padx=14)
-        mk_btn(hdr, "🗑", self._clear_chat, BORDER2, pady=3, padx=6).pack(side="right", padx=8)
+        # ── Top bar ───────────────────────────────────────────────────────────
+        top = tk.Frame(f, bg=SIDEBAR, pady=10); top.pack(fill="x")
 
-        # Mode pills
-        mode_bar = tk.Frame(rail, bg=PANEL); mode_bar.pack(fill="x", padx=10, pady=(8, 4))
+        left_top = tk.Frame(top, bg=SIDEBAR); left_top.pack(side="left", padx=18)
+        tk.Label(left_top, text="🤖  AI Assistant",
+                 font=("Segoe UI", 14, "bold"), bg=SIDEBAR, fg=ACCENT3).pack(side="left")
+        self.ai_model_lbl = tk.Label(left_top, text="",
+                 font=("Segoe UI", 9), bg=SIDEBAR, fg=TEXT2)
+        self.ai_model_lbl.pack(side="left", padx=(12, 0))
+
+        right_top = tk.Frame(top, bg=SIDEBAR); right_top.pack(side="right", padx=14)
+        mk_btn(right_top, "🗑  Clear Chat", self._clear_chat, BORDER2).pack(side="left", padx=4)
+        mk_btn(right_top, "⚙  Settings",   self._open_settings, BORDER2).pack(side="left", padx=4)
+
+        # ── Mode selector ─────────────────────────────────────────────────────
+        mode_bar = tk.Frame(f, bg=CARD); mode_bar.pack(fill="x")
+        tk.Label(mode_bar, text="Mode:", font=("Segoe UI", 9),
+                 bg=CARD, fg=TEXT2).pack(side="left", padx=(14, 8), pady=8)
         self.ai_mode = tk.StringVar(value="chat")
         self._mode_btns: Dict[str, tk.Button] = {}
-        modes = [("💬", "chat", "Chat"), ("📄", "qa", "Doc Q&A"),
-                 ("📋", "summarise", "Summarise"), ("🗂", "plan", "Plan")]
-        for icon, val, tip in modes:
-            b = tk.Button(mode_bar, text=f"{icon} {tip}",
-                          font=("Segoe UI", 9),
-                          bg=CARD2, fg=TEXT2,
+        modes = [
+            ("chat",      "💬 Chat",       "Talk freely — ask anything"),
+            ("qa",        "📄 Doc Q&A",    "Ask questions about a loaded file"),
+            ("summarise", "📋 Summarise",  "Get a summary of a loaded file"),
+            ("plan",      "🗂 Batch Plan", "Describe a goal — AI plans operations"),
+        ]
+        for val, label, tip in modes:
+            b = tk.Button(mode_bar, text=label,
+                          font=("Segoe UI", 9, "bold"),
+                          bg=CARD, fg=TEXT2,
                           relief="flat", cursor="hand2",
-                          padx=8, pady=4, bd=0,
+                          padx=12, pady=6, bd=0,
                           activebackground=ACCENT3,
+                          activeforeground="#ffffff",
                           command=lambda v=val: self._set_ai_mode(v))
-            b.pack(side="left", padx=(0, 4))
+            b.pack(side="left", padx=(0, 2))
+            Tooltip(b, tip)
             self._mode_btns[val] = b
-        self._set_ai_mode("chat", init=True)
 
-        # Active file selector (for Doc Q&A / Summarise)
-        self.ai_file_frame = tk.Frame(rail, bg=PANEL)
-        self.ai_file_frame.pack(fill="x", padx=10, pady=(0, 4))
-        tk.Label(self.ai_file_frame, text="File:", font=F["small"],
+        # File selector (shown only in qa / summarise modes)
+        self.ai_file_frame = tk.Frame(f, bg=PANEL); self.ai_file_frame.pack(fill="x")
+        file_inner = tk.Frame(self.ai_file_frame, bg=PANEL)
+        file_inner.pack(anchor="w", padx=14, pady=6)
+        tk.Label(file_inner, text="📎 Active file:", font=("Segoe UI", 9),
                  bg=PANEL, fg=TEXT2).pack(side="left")
-        self.ai_file_var = tk.StringVar(value="(double-click file in queue)")
-        self.ai_file_menu = tk.OptionMenu(self.ai_file_frame, self.ai_file_var, "(none)")
-        self.ai_file_menu.config(font=F["small"], bg=CARD2, fg=TEXT,
-                                  activebackground=BORDER,
-                                  relief="flat", bd=0, highlightthickness=0)
-        self.ai_file_menu.pack(side="left", fill="x", expand=True, padx=(4, 0))
+        self.ai_file_var = tk.StringVar(value="(none — double-click a file in Queue tab)")
+        self.ai_file_menu = tk.OptionMenu(file_inner, self.ai_file_var, "(none)")
+        self.ai_file_menu.config(font=("Segoe UI", 9), bg=CARD2, fg=TEXT,
+                                  activebackground=BORDER, relief="flat",
+                                  bd=0, highlightthickness=0)
+        self.ai_file_menu.pack(side="left", padx=(8, 0))
 
-        # Chat history display
+        # ── Chat history ──────────────────────────────────────────────────────
+        chat_frame = tk.Frame(f, bg=LOG_BG)
+        chat_frame.pack(fill="both", expand=True)
+
         self.chat_display = scrolledtext.ScrolledText(
-            rail, font=("Segoe UI", 10),
-            bg=LOG_BG, fg=TEXT, insertbackground=TEXT,
-            relief="flat", state="disabled", bd=0, wrap="word")
-        self.chat_display.pack(fill="both", expand=True, padx=0, pady=0)
+            chat_frame,
+            font=("Segoe UI", 11),
+            bg=LOG_BG, fg=TEXT,
+            insertbackground=TEXT,
+            relief="flat", state="disabled", bd=0,
+            wrap="word",
+            padx=20, pady=12,
+            spacing1=4, spacing3=4)
+        self.chat_display.pack(fill="both", expand=True)
 
-        self.chat_display.tag_config("user_lbl",  foreground=ACCENT,  font=("Segoe UI", 9, "bold"))
-        self.chat_display.tag_config("user_msg",  foreground=TEXT,    lmargin1=14, lmargin2=14)
-        self.chat_display.tag_config("ai_lbl",    foreground=ACCENT3, font=("Segoe UI", 9, "bold"))
-        self.chat_display.tag_config("ai_msg",    foreground=TEXT,    lmargin1=14, lmargin2=14)
-        self.chat_display.tag_config("sys_msg",   foreground=TEXT2,   font=("Segoe UI", 9, "italic"), lmargin1=14)
-        self.chat_display.tag_config("err_msg",   foreground=ERROR,   lmargin1=14)
-        self.chat_display.tag_config("intent_msg",foreground=ACCENT4, font=("Consolas", 9), lmargin1=14)
-        self.chat_display.tag_config("divider",   foreground=DIM2)
+        # Tag styles — conversational bubble feel
+        self.chat_display.tag_config("you_lbl",
+            foreground=ACCENT, font=("Segoe UI", 9, "bold"))
+        self.chat_display.tag_config("you_bubble",
+            foreground="#e8f0ff",
+            background="#1a2545",
+            lmargin1=20, lmargin2=20, rmargin=60,
+            spacing1=6, spacing3=6)
+        self.chat_display.tag_config("ai_lbl",
+            foreground=ACCENT3, font=("Segoe UI", 9, "bold"))
+        self.chat_display.tag_config("ai_bubble",
+            foreground="#e8fff4",
+            background="#0a2018",
+            lmargin1=20, lmargin2=20, rmargin=60,
+            spacing1=6, spacing3=6)
+        self.chat_display.tag_config("sys_msg",
+            foreground=TEXT2, font=("Segoe UI", 9, "italic"),
+            lmargin1=20, spacing1=2, spacing3=2)
+        self.chat_display.tag_config("err_msg",
+            foreground=ERROR, lmargin1=20, spacing1=4, spacing3=4)
+        self.chat_display.tag_config("typing_msg",
+            foreground=TEXT2, font=("Segoe UI", 9, "italic"),
+            lmargin1=20)
+        self.chat_display.tag_config("divider",
+            foreground=DIM2)
+        self.chat_display.tag_config("intent_msg",
+            foreground=ACCENT4, font=("Segoe UI", 9),
+            lmargin1=20, spacing1=2)
 
-        # Quick-action chips
-        chip_bar = tk.Frame(rail, bg=PANEL); chip_bar.pack(fill="x", padx=10, pady=(6, 4))
-        tk.Label(chip_bar, text="Quick:", font=("Segoe UI", 8),
-                 bg=PANEL, fg=TEXT2).pack(side="left")
-        for txt, prompt in [
-            ("Summarise",      "Summarise the selected file"),
-            ("Best format?",   "What is the best output format for my file?"),
-            ("What's inside?", "What data or content is in this file?"),
-            ("Make a plan",    "Plan the best operations for all my queued files"),
-        ]:
-            b = tk.Button(chip_bar, text=txt,
+        # ── Quick suggestions ─────────────────────────────────────────────────
+        suggest_bar = tk.Frame(f, bg=CARD); suggest_bar.pack(fill="x")
+        tk.Label(suggest_bar, text="Try asking:",
+                 font=("Segoe UI", 8), bg=CARD, fg=TEXT2).pack(side="left", padx=(14, 6), pady=6)
+        suggestions = [
+            ("What can you do?",            "What can you do for me?"),
+            ("Summarise my file",           "Summarise the selected file for me"),
+            ("Best format?",                "What is the best output format for my file and why?"),
+            ("Plan my workflow",            "Look at my files and plan the best set of operations for me"),
+            ("Analyse image",               "Analyse the image in my queue"),
+        ]
+        for label, prompt in suggestions:
+            b = tk.Button(suggest_bar, text=label,
                           font=("Segoe UI", 8),
                           bg=CARD2, fg=TEXT2,
                           relief="flat", cursor="hand2",
-                          padx=7, pady=2, bd=0,
-                          activebackground=BORDER2,
+                          padx=10, pady=4, bd=0,
+                          activebackground=ACCENT3,
+                          activeforeground="#ffffff",
                           command=lambda p=prompt: self._quick_prompt(p))
-            b.pack(side="left", padx=(4, 0))
+            b.pack(side="left", padx=(0, 4), pady=6)
 
-        # Input area
-        input_outer = tk.Frame(rail, bg=INPUT_BG)
-        input_outer.pack(fill="x", padx=0, pady=0)
+        # ── Input area ────────────────────────────────────────────────────────
+        input_wrap = tk.Frame(f, bg=INPUT_BG)
+        input_wrap.pack(fill="x")
+
+        # Input box + send side by side
+        input_row = tk.Frame(input_wrap, bg=INPUT_BG)
+        input_row.pack(fill="x", padx=14, pady=10)
 
         self.chat_input = tk.Text(
-            input_outer, height=3, font=("Segoe UI", 10),
-            bg=INPUT_BG, fg=TEXT, insertbackground=TEXT,
+            input_row, height=3,
+            font=("Segoe UI", 11),
+            bg="#1e1e30", fg=TEXT,
+            insertbackground=TEXT,
             relief="flat", bd=0, wrap="word")
-        self.chat_input.pack(fill="x", padx=12, pady=(10, 4))
+        self.chat_input.pack(side="left", fill="x", expand=True, padx=(0, 10), ipady=6)
         self.chat_input.bind("<Return>",       self._on_enter)
         self.chat_input.bind("<Shift-Return>", lambda e: None)
 
-        # placeholder hint
-        self._placeholder = "Type a command or question… (Enter to send)"
-        self._placeholder_active = False   # flag tracks whether hint text is showing
+        # placeholder
+        self._placeholder = "Message the AI…  (Enter to send, Shift+Enter for new line)"
+        self._placeholder_active = False
         self._set_placeholder()
         self.chat_input.bind("<FocusIn>",  self._clear_placeholder)
         self.chat_input.bind("<FocusOut>", self._restore_placeholder)
 
-        input_btns = tk.Frame(input_outer, bg=INPUT_BG)
-        input_btns.pack(fill="x", padx=10, pady=(0, 8))
-        mk_btn(input_btns, "↑  Send", self._send_btn,
-               ACCENT3, padx=14, pady=6).pack(side="left")
-        mk_btn(input_btns, "🖼 Analyse Image", self._analyse_image,
-               BORDER2, padx=10, pady=6).pack(side="left", padx=(6, 0))
+        send_col = tk.Frame(input_row, bg=INPUT_BG)
+        send_col.pack(side="left")
+        tk.Button(send_col, text="Send ↑",
+                  command=self._send_btn,
+                  font=("Segoe UI", 11, "bold"),
+                  bg=ACCENT3, fg="#ffffff",
+                  activebackground="#05b882",
+                  relief="flat", cursor="hand2",
+                  padx=18, pady=10, bd=0).pack(fill="x")
+        mk_btn(send_col, "🖼 Image", self._analyse_image,
+               BORDER2, padx=10, pady=4).pack(fill="x", pady=(4, 0))
 
-        self._ai_sys("Welcome! I'm your AI assistant.\n"
-                     "Add files, then ask me anything — I can convert, summarise,\n"
-                     "analyse images, answer questions about documents, and more.\n\n"
-                     "💡 Configure your Gemini API key in ⚙ Settings to get started.")
+        # ── Welcome message ───────────────────────────────────────────────────
+        self._set_ai_mode("chat", init=True)
+        self._ai_sys(
+            "👋  Hey! I'm your AI assistant. I'm here to help with your files.\n\n"
+            "You can talk to me naturally — ask me to convert files, summarise documents, "
+            "analyse images, plan a workflow, or just chat.\n\n"
+            "To get started: add some files using + Add Files, then ask me anything!"
+        )
 
     # ══════════════════════════════════════════════════════════════════════════
     # HOME PAGE  —  the friendly landing experience
@@ -1103,6 +1186,7 @@ class AIWorkshopApp(tk.Tk):
     # DYNAMIC SUB-UIs
     # ══════════════════════════════════════════════════════════════════════════
 
+# ═══ END OF PART 1 — paste app_part2.py directly below ═══
     def _update_split_ui(self):
         for w in self.split_opts.winfo_children(): w.destroy()
         mode = self.split_mode.get(); f = self.split_opts
@@ -1689,49 +1773,84 @@ class AIWorkshopApp(tk.Tk):
         self._ai_sys(f"📎 Active AI file set to: {Path(fp).name}\n"
                      f"Switch to Doc Q&A or Summarise mode to ask about it.")
 
+    def _insert_ai_bubble(self, text: str):
+        """Render an AI response as a styled chat bubble."""
+        # Remove any typing indicator first
+        self._remove_typing()
+        self.chat_display.config(state="normal")
+        self.chat_display.insert("end", "\n🤖  AI\n", "ai_lbl")
+        self.chat_display.insert("end", text + "\n", "ai_bubble")
+        self.chat_display.insert("end", "\n", "divider")
+        self.chat_display.see("end")
+        self.chat_display.config(state="disabled")
+
+    def _show_typing(self):
+        """Show a 'AI is thinking…' indicator."""
+        def _do():
+            self.chat_display.config(state="normal")
+            self.chat_display.insert("end", "⏳  AI is thinking…\n", "typing_msg")
+            self.chat_display.mark_set("typing_start",
+                self.chat_display.index("end-2l"))
+            self.chat_display.see("end")
+            self.chat_display.config(state="disabled")
+        self.after(0, _do)
+
+    def _remove_typing(self):
+        """Remove the typing indicator line."""
+        try:
+            start = self.chat_display.index("typing_start")
+            self.chat_display.delete(start, f"{start} lineend +1c")
+        except Exception:
+            pass
+
     def _ai_response(self, text: str, check_intent: bool = False):
         self.after(0, lambda: self._display_ai(text, check_intent))
 
     def _display_ai(self, text: str, check_intent: bool = False):
+        # Strip raw JSON blocks from display — show only the human-readable part
+        clean = _clean_ai_response(text)
         self.chat_display.config(state="normal")
-        self.chat_display.insert("end", "🤖  AI\n", "ai_lbl")
-        self.chat_display.insert("end", text + "\n\n", "ai_msg")
-        self.chat_display.insert("end", "─"*44+"\n", "divider")
+        self._insert_ai_bubble(clean)
         self.chat_display.see("end")
         self.chat_display.config(state="disabled")
         self._log(f"AI responded ({len(text)} chars)", "ai")
         if check_intent:
-            from ai.gemini import _extract_json
+            from ai.nvidia_nim import _extract_json
             intent = _extract_json(text)
             if intent and intent.get("action") not in (None, "chat", "unknown"):
                 self._apply_intent(intent)
 
     def _apply_intent(self, intent: dict):
         action = intent.get("action",""); fmt = intent.get("format"); msg = intent.get("message","")
-        if msg: self._ai_sys(f"🎯 Intent detected: {msg}")
         if action == "convert" and fmt:
             self._select_fmt(fmt); self._switch_tab("convert")
-        elif action in ("split","merge","compress","protect","organise","stamp","metadata"):
+            self._ai_sys(f"✅ Switched to Convert tab and set format to {fmt.upper()}")
+        elif action in ("split","merge","compress","protect","organise","stamp","metadata","video","upscale"):
             self._switch_tab(action)
+            self._ai_sys(f"✅ Switched to {action.title()} tab for you")
 
     def _ai_error(self, msg: str):
         def _do():
+            self._remove_typing()
             self.chat_display.config(state="normal")
-            self.chat_display.insert("end", f"⚠  Error: {msg}\n\n", "err_msg")
+            self.chat_display.insert("end", f"\n⚠  {msg}\n\n", "err_msg")
             self.chat_display.see("end")
             self.chat_display.config(state="disabled")
         self.after(0, _do)
 
     def _ai_user(self, text: str):
+        """Render a user message as a chat bubble and show typing indicator."""
         self.chat_display.config(state="normal")
-        self.chat_display.insert("end", "👤  You\n", "user_lbl")
-        self.chat_display.insert("end", text + "\n\n", "user_msg")
+        self.chat_display.insert("end", "\n👤  You\n", "you_lbl")
+        self.chat_display.insert("end", text + "\n", "you_bubble")
+        self.chat_display.insert("end", "\n", "divider")
         self.chat_display.see("end")
         self.chat_display.config(state="disabled")
+        self._show_typing()
 
     def _ai_sys(self, text: str):
         self.chat_display.config(state="normal")
-        self.chat_display.insert("end", text + "\n\n", "sys_msg")
+        self.chat_display.insert("end", text + "\n", "sys_msg")
         self.chat_display.see("end")
         self.chat_display.config(state="disabled")
 
@@ -1740,17 +1859,26 @@ class AIWorkshopApp(tk.Tk):
         self.chat_display.delete("1.0", "end")
         self.chat_display.config(state="disabled")
         self.ai.reset_chat()
-        self._ai_sys("Chat cleared. New session started.")
+        self._ai_sys("✨ Chat cleared. Fresh start — ask me anything!")
 
     def _set_ai_mode(self, val: str, init=False):
         self.ai_mode.set(val)
         for v, b in self._mode_btns.items():
             if v == val: b.config(bg=ACCENT3, fg="#ffffff")
-            else:        b.config(bg=CARD2, fg=TEXT2)
+            else:        b.config(bg=CARD, fg=TEXT2)
         if not init:
-            needs_file = val in ("qa","summarise")
-            if needs_file: self.ai_file_frame.pack(fill="x", padx=10, pady=(0,4))
-            else:          self.ai_file_frame.pack_forget()
+            needs_file = val in ("qa", "summarise")
+            if needs_file:
+                self.ai_file_frame.pack(fill="x")
+            else:
+                self.ai_file_frame.pack_forget()
+            hints = {
+                "chat":      "💬 Chat mode — just talk naturally!",
+                "qa":        "📄 Doc Q&A — select a file then ask questions about it",
+                "summarise": "📋 Summarise — select a file and I'll summarise it",
+                "plan":      "🗂 Batch Plan — describe what you want to achieve",
+            }
+            self._ai_sys(hints.get(val, ""))
 
     # ══════════════════════════════════════════════════════════════════════════
     # PLACEHOLDER  — uses a flag to avoid content/placeholder confusion
@@ -2147,12 +2275,18 @@ class AIWorkshopApp(tk.Tk):
 
     def _update_ai_status(self):
         if self.ai.is_ready:
-            model = self.cfg.get("gemini_model","?")
+            model = self.cfg.get("gemini_model", "?")
             self.ai_status_lbl.config(text=f"🟢 AI: {model}", fg=SUCCESS)
+            if hasattr(self, "ai_model_lbl"):
+                self.ai_model_lbl.config(text=f"· {model}", fg=ACCENT3)
         elif not HAS_GENAI:
-            self.ai_status_lbl.config(text="🔴 AI: pip install google-genai", fg=ERROR)
+            self.ai_status_lbl.config(text="🔴 AI: pip install openai", fg=ERROR)
+            if hasattr(self, "ai_model_lbl"):
+                self.ai_model_lbl.config(text="· not configured", fg=ERROR)
         else:
             self.ai_status_lbl.config(text="⚪ AI: open ⚙ to configure", fg=TEXT2)
+            if hasattr(self, "ai_model_lbl"):
+                self.ai_model_lbl.config(text="· open ⚙ Settings to connect", fg=TEXT2)
 
     def _log(self, msg: str, kind: str = ""):
         def _do():
