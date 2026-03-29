@@ -167,6 +167,7 @@ class AIWorkshopApp(tk.Tk):
         ("📦", "Compress",  "compress"),
         ("🏷",  "Metadata",  "metadata"),
         ("📋", "Queue",     "queue"),
+        ("📜", "Log",       "log"),
     ]
 
     def __init__(self):
@@ -190,6 +191,8 @@ class AIWorkshopApp(tk.Tk):
 
         self.pages: Dict[str, tk.Frame] = {}
         self.tab_btns: Dict[str, tk.Button] = {}
+        self._running_ops: int = 0          # count of active background operations
+        self._op_history: List[Dict] = []   # full log history for the Log tab
 
         self._build()
         self._switch_tab("aichat")
@@ -219,17 +222,31 @@ class AIWorkshopApp(tk.Tk):
         tk.Label(logo, text=" AI",
                  font=("Segoe UI", 15, "bold"), bg=SIDEBAR, fg=ACCENT3).pack(side="left")
 
-        # Drop hint
-        tk.Label(bar, text="Drop files anywhere or type a command →",
+        # Hint
+        tk.Label(bar, text="Convert · Split · Merge · Upscale · Analyse",
                  font=("Segoe UI", 9), bg=SIDEBAR, fg=TEXT2).pack(side="left", padx=20)
 
         # Right controls
         right = tk.Frame(bar, bg=SIDEBAR); right.pack(side="right", padx=14)
+
+        # Live operations badge — hidden when 0, glows when ops are running
+        self.ops_badge = tk.Button(right, text="",
+                                    font=("Segoe UI", 9, "bold"),
+                                    bg=SIDEBAR, fg=ACCENT4,
+                                    activebackground=CARD,
+                                    relief="flat", cursor="hand2",
+                                    padx=8, pady=4, bd=0,
+                                    command=lambda: self._switch_tab("log"))
+        self.ops_badge.pack(side="left", padx=(0, 8))
+        self.ops_badge.pack_forget()  # hidden until something runs
+
         self.ai_status_lbl = tk.Label(right, text="", font=F["small"], bg=SIDEBAR, fg=TEXT2)
-        self.ai_status_lbl.pack(side="left", padx=(0, 14))
-        mk_btn(right, "⚙  Settings",   self._open_settings, BORDER2).pack(side="left", padx=4)
-        mk_btn(right, "📂 Open Output", self._open_output,   BORDER2).pack(side="left", padx=4)
-        mk_btn(right, "+ Add Files",    self._add_files,     ACCENT).pack(side="left", padx=4)
+        self.ai_status_lbl.pack(side="left", padx=(0, 10))
+
+        mk_btn(right, "📜 Log",        lambda: self._switch_tab("log"), BORDER2).pack(side="left", padx=2)
+        mk_btn(right, "⚙  Settings",   self._open_settings,   BORDER2).pack(side="left", padx=2)
+        mk_btn(right, "📂 Output",      self._open_output,     BORDER2).pack(side="left", padx=2)
+        mk_btn(right, "+ Add Files",    self._add_files,       ACCENT).pack(side="left", padx=2)
 
     # ── Left sidebar ──────────────────────────────────────────────────────────
 
@@ -299,24 +316,9 @@ class AIWorkshopApp(tk.Tk):
         self._build_compress_page()
         self._build_metadata_page()
         self._build_queue_page()
+        self._build_log_page()
 
-        # Log bar
-        log_wrap = tk.Frame(self._centre, bg=LOG_BG)
-        log_wrap.pack(fill="x", padx=12, pady=(0, 6), side="bottom")
-        lhdr2 = tk.Frame(log_wrap, bg=LOG_BG); lhdr2.pack(fill="x")
-        tk.Label(lhdr2, text="LOG", font=("Consolas", 8, "bold"),
-                 bg=LOG_BG, fg=DIM2).pack(side="left", padx=8, pady=(4, 2))
-        mk_btn(lhdr2, "Clear", self._clear_log, BORDER2).pack(side="right", padx=6, pady=2)
-
-        self.log_box = scrolledtext.ScrolledText(
-            log_wrap, height=4, font=F["mono_sm"],
-            bg=LOG_BG, fg=TEXT, insertbackground=TEXT,
-            relief="flat", state="disabled", bd=0)
-        self.log_box.pack(fill="x", padx=2, pady=(0, 4))
-        for tag, col in [("ok", SUCCESS), ("err", ERROR),
-                          ("info", ACCENT), ("warn", WARN), ("ai", ACCENT3)]:
-            self.log_box.tag_config(tag, foreground=col)
-
+        # Slim status bar at very bottom — no log strip
         self.status_var = tk.StringVar(value="Ready")
         tk.Label(self._centre, textvariable=self.status_var,
                  font=F["small"], bg=BORDER, fg=TEXT2,
@@ -1105,6 +1107,103 @@ class AIWorkshopApp(tk.Tk):
         lbl(row, ".pdf", dim=True).pack(side="left")
         mk_big_btn(f, "▶  SAVE METADATA", self._run_metadata).pack(pady=12)
 
+    # ══════════════════════════════════════════════════════════════════════════
+    # LOG TAB  —  full operation history, parallel tracking, search
+    # ══════════════════════════════════════════════════════════════════════════
+
+    def _build_log_page(self):
+        f = self.pages["log"]
+        f.configure(bg=BG)
+
+        # ── Header ────────────────────────────────────────────────────────────
+        hdr = tk.Frame(f, bg=SIDEBAR, pady=10); hdr.pack(fill="x")
+        tk.Label(hdr, text="📜  Operation Log",
+                 font=("Segoe UI", 13, "bold"), bg=SIDEBAR, fg=TEXT).pack(side="left", padx=18)
+        tk.Label(hdr, text="Full history of all operations — runs in background, never blocks your workflow",
+                 font=("Segoe UI", 9), bg=SIDEBAR, fg=TEXT2).pack(side="left", padx=4)
+
+        # Badge showing running count
+        self.log_running_lbl = tk.Label(hdr, text="",
+                                         font=("Segoe UI", 9, "bold"),
+                                         bg=SIDEBAR, fg=ACCENT4)
+        self.log_running_lbl.pack(side="right", padx=18)
+
+        # ── Filter / search bar ───────────────────────────────────────────────
+        filter_bar = tk.Frame(f, bg=CARD); filter_bar.pack(fill="x")
+
+        tk.Label(filter_bar, text="Filter:", font=("Segoe UI", 9),
+                 bg=CARD, fg=TEXT2).pack(side="left", padx=(14, 6), pady=8)
+
+        self.log_filter_var = tk.StringVar()
+        filter_entry = tk.Entry(filter_bar, textvariable=self.log_filter_var,
+                                 font=("Consolas", 10),
+                                 bg=CARD2, fg=TEXT, insertbackground=TEXT,
+                                 relief="flat", bd=0, width=30)
+        filter_entry.pack(side="left", ipady=4, padx=(0, 8))
+        filter_entry.bind("<KeyRelease>", lambda e: self._apply_log_filter())
+
+        # Filter type buttons
+        self.log_filter_type = tk.StringVar(value="all")
+        for val, label, col in [
+            ("all",  "All",      TEXT2),
+            ("ok",   "✔ Done",   SUCCESS),
+            ("err",  "✖ Errors", ERROR),
+            ("warn", "⚠ Warn",   WARN),
+            ("info", "ℹ Info",   ACCENT),
+        ]:
+            tk.Radiobutton(filter_bar, text=label, variable=self.log_filter_type,
+                           value=val, font=("Segoe UI", 9),
+                           bg=CARD, fg=col,
+                           selectcolor=CARD2,
+                           activebackground=CARD, cursor="hand2",
+                           command=self._apply_log_filter).pack(side="left", padx=(0, 10))
+
+        # Right side controls
+        mk_btn(filter_bar, "📋 Copy All", self._copy_log, BORDER2).pack(side="right", padx=4, pady=6)
+        mk_btn(filter_bar, "🗑 Clear",    self._clear_log, BORDER2).pack(side="right", padx=4, pady=6)
+
+        # ── Stats bar ─────────────────────────────────────────────────────────
+        stats_bar = tk.Frame(f, bg=PANEL); stats_bar.pack(fill="x")
+        self.log_stats_ok   = tk.Label(stats_bar, text="✔ 0",  font=("Segoe UI", 9, "bold"), bg=PANEL, fg=SUCCESS)
+        self.log_stats_err  = tk.Label(stats_bar, text="✖ 0",  font=("Segoe UI", 9, "bold"), bg=PANEL, fg=ERROR)
+        self.log_stats_warn = tk.Label(stats_bar, text="⚠ 0",  font=("Segoe UI", 9, "bold"), bg=PANEL, fg=WARN)
+        self.log_stats_total= tk.Label(stats_bar, text="Total: 0", font=("Segoe UI", 9), bg=PANEL, fg=TEXT2)
+        for w in [self.log_stats_total, self.log_stats_ok,
+                  self.log_stats_err, self.log_stats_warn]:
+            w.pack(side="left", padx=14, pady=4)
+
+        # ── Log display ───────────────────────────────────────────────────────
+        log_frame = tk.Frame(f, bg=LOG_BG)
+        log_frame.pack(fill="both", expand=True, padx=0)
+
+        self.log_box = scrolledtext.ScrolledText(
+            log_frame,
+            font=("Consolas", 10),
+            bg=LOG_BG, fg=TEXT,
+            insertbackground=TEXT,
+            relief="flat", state="disabled", bd=0,
+            padx=14, pady=8,
+            spacing1=2, spacing3=2)
+        self.log_box.pack(fill="both", expand=True)
+
+        # Colour tags
+        self.log_box.tag_config("ok",        foreground=SUCCESS)
+        self.log_box.tag_config("err",        foreground=ERROR)
+        self.log_box.tag_config("warn",       foreground=WARN)
+        self.log_box.tag_config("info",       foreground=ACCENT)
+        self.log_box.tag_config("ai",         foreground=ACCENT3)
+        self.log_box.tag_config("ts",         foreground=DIM2)
+        self.log_box.tag_config("op_start",   foreground=ACCENT4,  font=("Consolas", 10, "bold"))
+        self.log_box.tag_config("op_done",    foreground=SUCCESS,  font=("Consolas", 10, "bold"))
+        self.log_box.tag_config("op_fail",    foreground=ERROR,    font=("Consolas", 10, "bold"))
+        self.log_box.tag_config("divider",    foreground=DIM2)
+
+        # Internal log store (all entries, unfiltered)
+        self._log_entries: List[Dict] = []  # {"ts", "msg", "kind", "op"}
+
+        # Stats counters
+        self._log_count = {"ok": 0, "err": 0, "warn": 0, "total": 0}
+
     def _build_queue_page(self):
         f = self.pages["queue"]
         section_hdr(f, "FILE QUEUE", "Manage staged files — Ctrl+click multi-select · double-click sets AI context")
@@ -1186,7 +1285,8 @@ class AIWorkshopApp(tk.Tk):
     # DYNAMIC SUB-UIs
     # ══════════════════════════════════════════════════════════════════════════
 
-# ═══ END OF PART 1 — paste app_part2.py directly below ═══
+
+# ═══ END OF PART 1 — paste app_part2.py directly below this line ═══
     def _update_split_ui(self):
         for w in self.split_opts.winfo_children(): w.destroy()
         mode = self.split_mode.get(); f = self.split_opts
@@ -1283,6 +1383,28 @@ class AIWorkshopApp(tk.Tk):
             return None
         return out
 
+    def _run_task(self, name: str, fn, on_done=None):
+        """
+        Wrapper: runs fn() in a background thread, tracks it in the op counter,
+        logs start/finish automatically, opens output folder when done.
+        fn should call self._log() for progress messages.
+        """
+        self._op_start(name)
+        self._switch_tab("log") if False else None  # don't auto-switch, just badge
+
+        def _worker():
+            success = True
+            try:
+                fn()
+            except Exception as e:
+                self._log(f"✖  {name}: {e}", "err")
+                success = False
+            finally:
+                self._op_done(name, success)
+                if success and on_done:
+                    self.after(300, on_done)
+        threading.Thread(target=_worker, daemon=True).start()
+
     def _run_convert(self):
         if not self.files: messagebox.showwarning("No Files","Add files first."); return
         out = self._require_out()
@@ -1291,6 +1413,7 @@ class AIWorkshopApp(tk.Tk):
         pages_str = self.conv_pages.get().strip()
         try: dpi = int(self.conv_dpi.get())
         except: dpi = 150
+
         def task():
             total = len(self.files); ok = 0
             for idx, src in enumerate(list(self.files)):
@@ -1302,8 +1425,8 @@ class AIWorkshopApp(tk.Tk):
                 except Exception as e: self._log(f"✖ {Path(src).name}: {e}", "err")
             self._log(f"Done — {ok}/{total} converted.", "info")
             self._status(f"Done — {ok}/{total} converted")
-            self.after(300, self._open_output)
-        threading.Thread(target=task, daemon=True).start()
+
+        self._run_task(f"Convert {len(self.files)} file(s) → {fmt.upper()}", task, self._open_output)
 
     def _run_upscale(self):
         images = [f for f in self.files if cat(f) == "image"]
@@ -1353,9 +1476,8 @@ class AIWorkshopApp(tk.Tk):
                 text=f"Done — {ok}/{len(images)} images upscaled"))
             self._log(f"Upscale complete — {ok}/{len(images)} images.", "info")
             self._status(f"Upscale done — {ok}/{len(images)}")
-            self.after(300, self._open_output)
 
-        threading.Thread(target=task, daemon=True).start()
+        self._run_task(f"Upscale {len(images)} image(s) ×{scale}", task, self._open_output)
 
     def _upscale_preview_info(self):
         images = [f for f in self.files if cat(f) == "image"]
@@ -1382,34 +1504,28 @@ class AIWorkshopApp(tk.Tk):
             pptxs = [f for f in self.files if cat(f) == "pptx"]
             if not pptxs: messagebox.showwarning("No PPTX","Add a PPTX first."); return
             src = pptxs[0]
-            def task():
-                try:
-                    files = pptx_split_slides(src, out, prefix)
-                    self._log(f"✔ {len(files)} slide files created.", "ok")
-                    self.after(300, self._open_output)
-                except Exception as ex: self._log(f"ERROR: {ex}", "err")
-            threading.Thread(target=task, daemon=True).start(); return
+            def ptask():
+                files = pptx_split_slides(src, out, prefix)
+                self._log(f"✔ {len(files)} slide files created.", "ok")
+            self._run_task(f"Split PPTX: {Path(src).name}", ptask, self._open_output); return
         src = self._require_pdf("Split")
         if not src: return
         def task():
-            try:
-                if mode == "each":
-                    files = split_each(src, out, prefix)
-                    self._log(f"✔ {len(files)} files.", "ok")
-                elif mode == "range":
-                    try: s,e = int(self.range_start.get()), int(self.range_end.get())
-                    except: self._log("⚠ Invalid range.", "err"); return
-                    p = split_range(src, s, e, out, prefix)
-                    self._log(f"✔ {Path(p).name}", "ok")
-                elif mode == "custom":
-                    groups = parse_groups(self.custom_groups.get(), self.page_count or 9999)
-                    if not groups: self._log("⚠ No valid groups.", "err"); return
-                    files = split_custom(src, groups, out, prefix)
-                    for fp in files: self._log(f"  → {Path(fp).name}")
-                    self._log(f"✔ {len(files)} files.", "ok")
-                self.after(300, self._open_output)
-            except Exception as ex: self._log(f"ERROR: {ex}", "err")
-        threading.Thread(target=task, daemon=True).start()
+            if mode == "each":
+                files = split_each(src, out)
+                self._log(f"✔ {len(files)} files.", "ok")
+            elif mode == "range":
+                try: s, e = int(self.range_start.get()), int(self.range_end.get())
+                except: self._log("⚠ Invalid range.", "err"); return
+                p = split_range(src, s, e, out)
+                self._log(f"✔ {Path(p).name}", "ok")
+            elif mode == "custom":
+                groups = parse_groups(self.custom_groups.get(), self.page_count or 9999)
+                if not groups: self._log("⚠ No valid groups.", "err"); return
+                files = split_custom(src, groups, out)
+                for fp in files: self._log(f"  → {Path(fp).name}")
+                self._log(f"✔ {len(files)} files.", "ok")
+        self._run_task(f"Split PDF: {Path(src).name}", task, self._open_output)
 
     def _run_merge(self):
         if not self.files: messagebox.showwarning("Merge","Add files first."); return
@@ -1419,12 +1535,9 @@ class AIWorkshopApp(tk.Tk):
         dst = os.path.join(out, (self.merge_name.get().strip() or "merged_output") + "." + mtype)
         srcs = list(self.files)
         def task():
-            try:
-                merge_pdfs(srcs, dst) if mtype == "pdf" else pptx_merge(srcs, dst)
-                self._log(f"✔ {Path(dst).name}  ({os.path.getsize(dst)/1024:.1f} KB)", "ok")
-                self.after(300, self._open_output)
-            except Exception as ex: self._log(f"ERROR: {ex}", "err")
-        threading.Thread(target=task, daemon=True).start()
+            merge_pdfs(srcs, dst) if mtype == "pdf" else pptx_merge(srcs, dst)
+            self._log(f"✔ {Path(dst).name}  ({os.path.getsize(dst)/1024:.1f} KB)", "ok")
+        self._run_task(f"Merge {len(srcs)} files → {mtype.upper()}", task, self._open_output)
 
     # ── Video run handlers ────────────────────────────────────────────────────
 
@@ -1494,18 +1607,14 @@ class AIWorkshopApp(tk.Tk):
             fmt    = self.video_fmt.get().strip().lstrip(".")
 
             def task():
-                try:
-                    self._log(f"Splitting {Path(src).name} into {len(segments)} segment(s) …")
-                    files = video_split(src, segments, out, prefix, fmt)
-                    for fp in files:
-                        sz = os.path.getsize(fp) / (1024*1024)
-                        self._log(f"✔ {Path(fp).name}  ({sz:.1f} MB)", "ok")
-                    self._log(f"Split complete — {len(files)} segment(s) saved.", "info")
-                    self._status(f"Split done — {len(files)} segments")
-                    self.after(300, self._open_output)
-                except Exception as ex:
-                    self._log(f"ERROR: {ex}", "err")
-            threading.Thread(target=task, daemon=True).start()
+                self._log(f"Splitting {Path(src).name} into {len(segments)} segment(s) …")
+                files = video_split(src, segments, out, prefix, fmt)
+                for fp in files:
+                    sz = os.path.getsize(fp) / (1024*1024)
+                    self._log(f"✔ {Path(fp).name}  ({sz:.1f} MB)", "ok")
+                self._log(f"Split complete — {len(files)} segment(s) saved.", "info")
+                self._status(f"Split done — {len(files)} segments")
+            self._run_task(f"Video Split: {Path(src).name}", task, self._open_output)
 
         elif op == "merge":
             av = [f for f in self.files if cat(f) in ("video", "audio")]
@@ -1518,16 +1627,12 @@ class AIWorkshopApp(tk.Tk):
             dst  = os.path.join(out, name)
 
             def task():
-                try:
-                    self._log(f"Merging {len(av)} file(s) → {name} …")
-                    video_merge(av, dst, log=self._log)
-                    sz = os.path.getsize(dst) / (1024*1024)
-                    self._log(f"✔ {Path(dst).name}  ({sz:.1f} MB)", "ok")
-                    self._status(f"Merge done — {Path(dst).name}")
-                    self.after(300, self._open_output)
-                except Exception as ex:
-                    self._log(f"ERROR: {ex}", "err")
-            threading.Thread(target=task, daemon=True).start()
+                self._log(f"Merging {len(av)} file(s) → {name} …")
+                video_merge(av, dst, log=self._log)
+                sz = os.path.getsize(dst) / (1024*1024)
+                self._log(f"✔ {Path(dst).name}  ({sz:.1f} MB)", "ok")
+                self._status(f"Merge done — {Path(dst).name}")
+            self._run_task(f"Video Merge → {name}", task, self._open_output)
 
     def _ai_video_suggest(self):
         """Ask AI for advice about the current video/audio file."""
@@ -1556,27 +1661,24 @@ class AIWorkshopApp(tk.Tk):
         dst = os.path.join(out, (self.org_out_name.get().strip() or "organised") + ".pdf")
         pc = self.page_count or pdf_page_count(src)
         def task():
-            try:
-                if op == "resequence":
-                    order = [p for p in parse_pages(self.org_seq.get(), pc*10) if 1<=p<=pc]
-                    if not order: self._log("⚠ No valid order.", "err"); return
-                    resequence_pdf(src, order, dst)
-                elif op == "delete":
-                    pages = parse_pages(self.org_del_pages.get(), pc)
-                    if not pages: self._log("⚠ No pages.", "err"); return
-                    delete_pages(src, pages, dst)
-                elif op == "rotate":
-                    try: deg = int(self.org_rotate_deg.get())
-                    except: deg = 90
-                    pstr = self.org_rotate_pages.get().strip()
-                    pages = parse_pages(pstr, pc) if pstr else None
-                    rotate_pages(src, deg, pages, dst)
-                elif op == "reverse":
-                    reverse_pdf(src, dst)
-                self._log(f"✔ {Path(dst).name}  ({os.path.getsize(dst)/1024:.1f} KB)", "ok")
-                self.after(300, self._open_output)
-            except Exception as ex: self._log(f"ERROR: {ex}", "err")
-        threading.Thread(target=task, daemon=True).start()
+            if op == "resequence":
+                order = [p for p in parse_pages(self.org_seq.get(), pc*10) if 1<=p<=pc]
+                if not order: self._log("⚠ No valid order.", "err"); return
+                resequence_pdf(src, order, dst)
+            elif op == "delete":
+                pages = parse_pages(self.org_del_pages.get(), pc)
+                if not pages: self._log("⚠ No pages.", "err"); return
+                delete_pages(src, pages, dst)
+            elif op == "rotate":
+                try: deg = int(self.org_rotate_deg.get())
+                except: deg = 90
+                pstr = self.org_rotate_pages.get().strip()
+                pages = parse_pages(pstr, pc) if pstr else None
+                rotate_pages(src, deg, pages, dst)
+            elif op == "reverse":
+                reverse_pdf(src, dst)
+            self._log(f"✔ {Path(dst).name}  ({os.path.getsize(dst)/1024:.1f} KB)", "ok")
+        self._run_task(f"Organise PDF ({op}): {Path(src).name}", task, self._open_output)
 
     def _run_stamp(self):
         src = self._require_pdf("Stamp"); out = self._require_out()
@@ -1587,26 +1689,23 @@ class AIWorkshopApp(tk.Tk):
         pstr = self.stamp_pages.get().strip()
         pages = parse_pages(pstr, pc) if pstr else None
         def task():
-            try:
-                if mode == "text":
-                    text = self.stamp_text.get().strip() or "WATERMARK"
-                    try: fsize = int(self.stamp_size.get())
-                    except: fsize = 48
-                    color = self.stamp_color.get().strip() or "#888888"
-                    try: opacity = float(self.stamp_opacity.get())
-                    except: opacity = 0.3
-                    try: angle = int(self.stamp_angle.get())
-                    except: angle = 45
-                    watermark_text(src, dst, text, opacity, fsize, color, angle, pages)
-                else:
-                    wm = self.stamp_wm_path.get().strip()
-                    if not wm or not os.path.isfile(wm):
-                        self._log("⚠ Select watermark PDF.", "err"); return
-                    watermark_pdf_overlay(src, wm, dst, pages)
-                self._log(f"✔ {Path(dst).name}", "ok")
-                self.after(300, self._open_output)
-            except Exception as ex: self._log(f"ERROR: {ex}", "err")
-        threading.Thread(target=task, daemon=True).start()
+            if mode == "text":
+                text = self.stamp_text.get().strip() or "WATERMARK"
+                try: fsize = int(self.stamp_size.get())
+                except: fsize = 48
+                color = self.stamp_color.get().strip() or "#888888"
+                try: opacity = float(self.stamp_opacity.get())
+                except: opacity = 0.3
+                try: angle = int(self.stamp_angle.get())
+                except: angle = 45
+                watermark_text(src, dst, text, opacity, fsize, color, angle, pages)
+            else:
+                wm = self.stamp_wm_path.get().strip()
+                if not wm or not os.path.isfile(wm):
+                    self._log("⚠ Select watermark PDF.", "err"); return
+                watermark_pdf_overlay(src, wm, dst, pages)
+            self._log(f"✔ {Path(dst).name}", "ok")
+        self._run_task(f"Stamp PDF: {Path(src).name}", task, self._open_output)
 
     def _run_protect(self):
         src = self._require_pdf("Protect"); out = self._require_out()
@@ -1615,31 +1714,26 @@ class AIWorkshopApp(tk.Tk):
         pw1 = self.protect_pw1.get(); pw2 = self.protect_pw2.get()
         dst = os.path.join(out, (self.protect_out.get().strip() or "protected") + ".pdf")
         def task():
-            try:
-                if mode == "encrypt":
-                    if not pw1: self._log("⚠ Enter a password.", "err"); return
-                    encrypt_pdf(src, dst, pw1, pw2)
-                else:
-                    if not pw1: self._log("⚠ Enter the password.", "err"); return
-                    decrypt_pdf(src, dst, pw1)
-                self._log(f"✔ {Path(dst).name}", "ok")
-                self.after(300, self._open_output)
-            except Exception as ex: self._log(f"ERROR: {ex}", "err")
-        threading.Thread(target=task, daemon=True).start()
+            if mode == "encrypt":
+                if not pw1: self._log("⚠ Enter a password.", "err"); return
+                encrypt_pdf(src, dst, pw1, pw2)
+            else:
+                if not pw1: self._log("⚠ Enter the password.", "err"); return
+                decrypt_pdf(src, dst, pw1)
+            self._log(f"✔ {Path(dst).name}", "ok")
+        self._run_task(f"{'Encrypt' if mode=='encrypt' else 'Decrypt'} PDF: {Path(src).name}",
+                       task, self._open_output)
 
     def _run_compress(self):
         src = self._require_pdf("Compress"); out = self._require_out()
         if not src or not out: return
         dst = os.path.join(out, (self.compress_out.get().strip() or "compressed") + ".pdf")
+        before = os.path.getsize(src)/1024
         def task():
-            try:
-                before = os.path.getsize(src)/1024
-                compress_pdf(src, dst)
-                after = os.path.getsize(dst)/1024
-                self._log(f"✔ {Path(dst).name}  ({after:.1f} KB)  saved {before-after:.1f} KB", "ok")
-                self.after(300, self._open_output)
-            except Exception as ex: self._log(f"ERROR: {ex}", "err")
-        threading.Thread(target=task, daemon=True).start()
+            compress_pdf(src, dst)
+            after = os.path.getsize(dst)/1024
+            self._log(f"✔ {Path(dst).name}  ({after:.1f} KB)  saved {before-after:.1f} KB", "ok")
+        self._run_task(f"Compress PDF: {Path(src).name}", task, self._open_output)
 
     def _run_metadata(self):
         src = self._require_pdf("Metadata"); out = self._require_out()
@@ -1647,12 +1741,9 @@ class AIWorkshopApp(tk.Tk):
         dst = os.path.join(out, (self.meta_out.get().strip() or "updated") + ".pdf")
         fields = {k: v.get() for k, v in self.meta_fields.items()}
         def task():
-            try:
-                set_metadata(src, dst, fields)
-                self._log(f"✔ Metadata saved: {Path(dst).name}", "ok")
-                self.after(300, self._open_output)
-            except Exception as ex: self._log(f"ERROR: {ex}", "err")
-        threading.Thread(target=task, daemon=True).start()
+            set_metadata(src, dst, fields)
+            self._log(f"✔ Metadata saved: {Path(dst).name}", "ok")
+        self._run_task(f"Update Metadata: {Path(src).name}", task, self._open_output)
 
     # ══════════════════════════════════════════════════════════════════════════
     # AI ACTIONS
@@ -2272,6 +2363,7 @@ class AIWorkshopApp(tk.Tk):
         if key == "merge":  self._refresh_merge_preview()
         if key == "video":  self._refresh_video_merge_preview()
         if key == "queue":  self._on_queue_select()
+        if key == "log":    self._apply_log_filter()
 
     def _update_ai_status(self):
         if self.ai.is_ready:
@@ -2288,20 +2380,155 @@ class AIWorkshopApp(tk.Tk):
             if hasattr(self, "ai_model_lbl"):
                 self.ai_model_lbl.config(text="· open ⚙ Settings to connect", fg=TEXT2)
 
-    def _log(self, msg: str, kind: str = ""):
-        def _do():
-            self.log_box.config(state="normal")
-            tag={"ok":"ok","err":"err","info":"info","warn":"warn","ai":"ai"}.get(kind,"")
-            self.log_box.insert("end","  "+msg+"\n",tag)
-            self.log_box.see("end"); self.log_box.config(state="disabled")
-        self.after(0,_do)
+    # ══════════════════════════════════════════════════════════════════════════
+    # LOG SYSTEM  —  thread-safe, timestamped, filterable
+    # ══════════════════════════════════════════════════════════════════════════
 
-    def _clear_log(self):
-        self.log_box.config(state="normal"); self.log_box.delete("1.0","end")
+    def _log(self, msg: str, kind: str = "", op: str = ""):
+        """
+        Append a log entry. Thread-safe — can be called from any thread.
+        kind: ok | err | warn | info | ai  (controls colour)
+        op:   operation name for grouping (optional)
+        """
+        import datetime
+        ts = datetime.datetime.now().strftime("%H:%M:%S")
+        entry = {"ts": ts, "msg": msg, "kind": kind, "op": op}
+
+        def _do():
+            # Store entry
+            if not hasattr(self, "_log_entries"):
+                self._log_entries = []
+            self._log_entries.append(entry)
+
+            # Update stats
+            if not hasattr(self, "_log_count"):
+                self._log_count = {"ok": 0, "err": 0, "warn": 0, "total": 0}
+            self._log_count["total"] += 1
+            if kind in ("ok", "err", "warn"):
+                self._log_count[kind] += 1
+            self._update_log_stats()
+
+            # Write to display
+            self._write_log_entry(entry)
+
+            # Flash the Log tab button if not currently on log page
+            if hasattr(self, "tab_btns") and "log" in self.tab_btns:
+                if self.pages["log"].winfo_ismapped() is False:
+                    self._flash_log_badge(kind)
+
+            # Update status bar with last message
+            icon = {"ok":"✔","err":"✖","warn":"⚠","info":"ℹ","ai":"🤖"}.get(kind,"·")
+            self.status_var.set(f"  {icon}  {msg[:90]}")
+
+        self.after(0, _do)
+
+    def _write_log_entry(self, entry: dict):
+        """Write a single entry to the log_box widget."""
+        if not hasattr(self, "log_box"): return
+
+        # Apply current filter
+        ftype = self.log_filter_var.get().strip().lower() if hasattr(self, "log_filter_var") else ""
+        fkind = self.log_filter_type.get() if hasattr(self, "log_filter_type") else "all"
+
+        # Text filter
+        if ftype and ftype not in entry["msg"].lower() and ftype not in entry["kind"]:
+            return
+        # Kind filter
+        if fkind != "all" and entry["kind"] != fkind:
+            return
+
+        tag = {"ok":"ok","err":"err","warn":"warn","info":"info","ai":"ai"}.get(entry["kind"],"")
+        prefix = {"ok":"✔ ","err":"✖ ","warn":"⚠ ","info":"  ","ai":"🤖 "}.get(entry["kind"],"  ")
+
+        self.log_box.config(state="normal")
+        self.log_box.insert("end", f"[{entry['ts']}] ", "ts")
+        self.log_box.insert("end", f"{prefix}{entry['msg']}\n", tag or "info")
+        self.log_box.see("end")
         self.log_box.config(state="disabled")
 
+    def _update_log_stats(self):
+        """Refresh the stats labels at the top of the log page."""
+        if not hasattr(self, "log_stats_ok"): return
+        c = self._log_count
+        self.log_stats_ok.config(   text=f"✔ {c['ok']}")
+        self.log_stats_err.config(  text=f"✖ {c['err']}")
+        self.log_stats_warn.config( text=f"⚠ {c['warn']}")
+        self.log_stats_total.config(text=f"Total: {c['total']}")
+
+    def _apply_log_filter(self, _=None):
+        """Re-render the log box applying current filter settings."""
+        if not hasattr(self, "log_box") or not hasattr(self, "_log_entries"): return
+        self.log_box.config(state="normal")
+        self.log_box.delete("1.0", "end")
+        self.log_box.config(state="disabled")
+        for entry in self._log_entries:
+            self._write_log_entry(entry)
+
+    def _clear_log(self):
+        if not hasattr(self, "log_box"): return
+        self.log_box.config(state="normal")
+        self.log_box.delete("1.0", "end")
+        self.log_box.config(state="disabled")
+        if hasattr(self, "_log_entries"):
+            self._log_entries.clear()
+        if hasattr(self, "_log_count"):
+            self._log_count = {"ok": 0, "err": 0, "warn": 0, "total": 0}
+            self._update_log_stats()
+
+    def _copy_log(self):
+        """Copy the full log to clipboard."""
+        if not hasattr(self, "_log_entries"): return
+        lines = [f"[{e['ts']}] {e['msg']}" for e in self._log_entries]
+        self.clipboard_clear()
+        self.clipboard_append("\n".join(lines))
+        self._log("Log copied to clipboard.", "info")
+
+    def _op_start(self, name: str):
+        """
+        Call at the start of any background operation.
+        Increments the running counter and shows the badge.
+        """
+        self._running_ops = getattr(self, "_running_ops", 0) + 1
+        self._update_ops_badge()
+        self._log(f"▶  {name} started …", "info", op=name)
+
+    def _op_done(self, name: str, success: bool = True):
+        """Call when a background operation finishes."""
+        self._running_ops = max(0, getattr(self, "_running_ops", 0) - 1)
+        self._update_ops_badge()
+        kind = "ok" if success else "err"
+        symbol = "✔" if success else "✖"
+        self._log(f"{symbol}  {name} finished.", kind, op=name)
+
+    def _update_ops_badge(self):
+        """Show/hide/update the topbar badge."""
+        def _do():
+            n = getattr(self, "_running_ops", 0)
+            if n > 0:
+                self.ops_badge.config(
+                    text=f"⚙  {n} running — click for log",
+                    bg=ACCENT4, fg="#000000")
+                self.ops_badge.pack(side="left", padx=(0, 8))
+            else:
+                self.ops_badge.config(text="", bg=SIDEBAR)
+                self.ops_badge.pack_forget()
+            if hasattr(self, "log_running_lbl"):
+                self.log_running_lbl.config(
+                    text=f"⚙  {n} operation(s) running" if n > 0 else "All operations complete ✔",
+                    fg=ACCENT4 if n > 0 else SUCCESS)
+        self.after(0, _do)
+
+    def _flash_log_badge(self, kind: str):
+        """Briefly highlight the Log tab button when new entries arrive."""
+        if not hasattr(self, "tab_btns") or "log" not in self.tab_btns: return
+        btn = self.tab_btns["log"]
+        color = {"ok": SUCCESS, "err": ERROR, "warn": WARN}.get(kind, ACCENT)
+        orig = SIDEBAR
+        btn.config(fg=color)
+        self.after(1200, lambda: btn.config(fg=TEXT2 if btn.cget("bg") == SIDEBAR else "#ffffff"))
+
     def _status(self, msg: str):
-        self.after(0, lambda: self.status_var.set("  "+msg))
+        self.after(0, lambda: self.status_var.set("  " + msg))
 
     def _refresh_deps(self):
         deps=[HAS_PYPDF,HAS_PDFPLUMBER,HAS_DOCX,HAS_PIL,
