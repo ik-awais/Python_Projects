@@ -1280,6 +1280,56 @@ def set_metadata(src, dst, fields):
 
 # ── Master dispatch ───────────────────────────────────────────────────────────
 
+def preview_convert_paths(src, out_fmt, out_dir, pages_str="", dpi=150):
+    """Expected primary output path(s) for do_convert (no I/O, for UI dry-run)."""
+    c = cat(src)
+    stem = Path(src).stem
+    out_fmt = out_fmt.lower().lstrip(".")
+    out_dir = str(out_dir)
+    total = 0
+    if c == "pdf" and HAS_PYPDF:
+        try:
+            total = pdf_page_count(src)
+        except Exception:
+            total = 0
+    pages = parse_pages(pages_str, total) if pages_str.strip() and total else None
+    if c == "pdf":
+        dst = os.path.join(out_dir, stem + f".{out_fmt}")
+        if out_fmt in ("png", "jpg", "jpeg"):
+            sub = os.path.join(out_dir, stem + "_images")
+            pg = pages[0] if pages else 1
+            return [os.path.join(sub, f"page_{pg}.{out_fmt}")]
+        if out_fmt in ("xlsx", "xls"):
+            return [os.path.join(out_dir, stem + ".xlsx")]
+        if out_fmt == "csv":
+            return [os.path.join(out_dir, stem + ".csv")]
+        return [dst]
+    if c == "excel":
+        dst = os.path.join(out_dir, stem + f".{out_fmt}")
+        if out_fmt in ("xlsx", "xls", "ods"):
+            return [dst]
+        return [dst]
+    if c == "csv":
+        dst = os.path.join(out_dir, stem + f".{out_fmt}")
+        if out_fmt in ("xlsx", "xls"):
+            return [os.path.join(out_dir, stem + ".xlsx")]
+        return [dst]
+    if c == "pptx":
+        dst = os.path.join(out_dir, stem + f".{out_fmt}")
+        if out_fmt in ("png", "jpg", "jpeg"):
+            sub = os.path.join(out_dir, stem + "_slides")
+            return [os.path.join(sub, f"slide_1.{out_fmt}")]
+        return [dst]
+    if c in ("docx", "txt", "html"):
+        return [os.path.join(out_dir, stem + f".{out_fmt}")]
+    if c == "image":
+        if out_fmt == "pdf":
+            return [os.path.join(out_dir, stem + ".pdf")]
+        return [os.path.join(out_dir, stem + "." + out_fmt)]
+    if c in ("video", "audio"):
+        return [os.path.join(out_dir, stem + "." + out_fmt)]
+    return [os.path.join(out_dir, stem + f".{out_fmt}")]
+
 def do_convert(src, out_fmt, out_dir, pages_str="", dpi=150, log=None):
     def L(m):
         if log: log(m)

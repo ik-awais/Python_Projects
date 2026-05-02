@@ -20,7 +20,7 @@ from tkinter import filedialog, messagebox, scrolledtext, ttk
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from config import DARK as C, FONTS as F, load_config, save_config, GEMINI_MODELS
 from core.processor import (
-    cat, cat_icon, parse_pages, parse_groups, do_convert,
+    cat, cat_icon, parse_pages, parse_groups, do_convert, preview_convert_paths,
     pdf_page_count, pptx_slide_count,
     split_each, split_range, split_custom,
     merge_pdfs, pptx_merge, pptx_split_slides,
@@ -561,6 +561,11 @@ class AIWorkshopApp(tk.Tk):
         btns = tk.Frame(confirm, bg=PANEL); btns.pack(anchor="w", pady=(10, 0))
         mk_big_btn(btns, "▶ Run Exactly This Plan", self._run_command_plan, ACCENT3).pack(side="left", padx=(0, 8))
         mk_btn(btns, "↻ Sync from latest AI reply", self._sync_command_from_latest_intent, BORDER2).pack(side="left")
+        self.cmd_dry_run_var = tk.StringVar(value="Dry-run: (edit JSON to preview)")
+        tk.Label(confirm, textvariable=self.cmd_dry_run_var, font=F["mono_sm"], bg=PANEL, fg=ACCENT4,
+                 wraplength=920, justify="left").pack(anchor="w", pady=(10, 0))
+        self.cmd_json.bind("<KeyRelease>", self._refresh_command_dry_run)
+        self.after(0, self._refresh_command_dry_run)
 
     # ══════════════════════════════════════════════════════════════════════════
     # HOME PAGE  —  the friendly landing experience
@@ -2018,6 +2023,123 @@ class AIWorkshopApp(tk.Tk):
         action = intent.get("action", "unknown")
         msg = intent.get("message", "")
         self.cmd_summary_var.set(f"Action: {action}" + (f"  |  {msg}" if msg else ""))
+        self._refresh_command_dry_run()
+
+    def _refresh_command_dry_run(self, _=None):
+        if not hasattr(self, "cmd_dry_run_var"):
+            return
+        try:
+            import json
+            intent = json.loads(self.cmd_json.get("1.0", "end-1c").strip() or "{}")
+        except Exception:
+            self.cmd_dry_run_var.set("Dry-run: invalid JSON — fix or validate")
+            return
+        self.cmd_dry_run_var.set(self._build_command_dry_run_text(intent))
+
+    def _build_command_dry_run_text(self, intent: dict) -> str:
+        out = self.out_dir.get().strip()
+        if not out:
+            return "Dry-run: set output folder in sidebar"
+        if not intent or not (intent.get("action") or "").strip():
+            return "Dry-run: add JSON with an \"action\" (e.g. convert, merge, split)"
+        action = (intent.get("action") or "").strip().lower()
+        if action == "media":
+            action = "video"
+        if action == "convert":
+            fmt = (intent.get("format") or "").strip().lower()
+            if not fmt:
+                return "Dry-run: convert — add \"format\" in JSON"
+            pages_s = str(intent.get("pages") or "").strip()
+            n = len(self.files)
+            if not self.files:
+                return "Dry-run: convert — no files in queue"
+            try:
+                dpi = int(self.conv_dpi.get())
+            except Exception:
+                dpi = 150
+            ex = preview_convert_paths(self.files[0], fmt, out, pages_s, dpi)[0]
+            return f"Dry-run: Convert ×{n} queued file(s) → {fmt.upper()} | first output: {ex}"
+        if action == "merge":
+            mtype = self.merge_type.get()
+            name = (self.merge_name.get().strip() or "merged_output") + "." + mtype
+            return f"Dry-run: Merge → {os.path.join(out, name)}  ({len(self.files)} file(s) in queue)"
+        if action == "split":
+            stype = self.split_type.get()
+            prefix = self.split_prefix.get().strip() or "split"
+            if stype == "pptx":
+                pptxs = [f for f in self.files if cat(f) == "pptx"]
+                if not pptxs:
+                    return "Dry-run: split — add a PPTX to the queue"
+                return f"Dry-run: Split PPTX → {os.path.join(out, prefix + '_001.pptx')} (one file per slide)"
+            pdfs = [f for f in self.files if cat(f) == "pdf"]
+            if not pdfs:
+                return "Dry-run: split — add a PDF to the queue"
+            stem = Path(pdfs[0]).stem
+            mode = self.split_mode.get()
+            if mode == "each":
+                return f"Dry-run: Split PDF (each page) → {os.path.join(out, stem + '_p001.pdf')} …"
+            if mode == "range":
+                try:
+                    s, e = int(self.range_start.get()), int(self.range_end.get())
+                except Exception:
+                    return "Dry-run: split PDF (range) — set valid page range in Split tab"
+                return f"Dry-run: Split PDF (range) → {os.path.join(out, stem + f'_p{s}-{e}.pdf')}"
+            return f"Dry-run: Split PDF (custom groups) → multiple files like «{stem}_g01_….pdf»"
+        if action == "compress":
+            pdfs = [f for f in self.files if cat(f) == "pdf"]
+            if not pdfs:
+                return "Dry-run: compress — add a PDF"
+            dst = os.path.join(out, (self.compress_out.get().strip() or "compressed") + ".pdf")
+            return f"Dry-run: Compress PDF → {dst}"
+        if action == "protect":
+            pdfs = [f for f in self.files if cat(f) == "pdf"]
+            if not pdfs:
+                return "Dry-run: protect — add a PDF"
+            dst = os.path.join(out, (self.protect_out.get().strip() or "protected") + ".pdf")
+            mode = self.protect_mode.get()
+            return f"Dry-run: {'Encrypt' if mode == 'encrypt' else 'Decrypt'} PDF → {dst}"
+        if action == "organise":
+            pdfs = [f for f in self.files if cat(f) == "pdf"]
+            if not pdfs:
+                return "Dry-run: organise — add a PDF"
+            dst = os.path.join(out, (self.org_out_name.get().strip() or "organised") + ".pdf")
+            return f"Dry-run: Organise PDF ({self.org_op.get()}) → {dst}"
+        if action == "stamp":
+            pdfs = [f for f in self.files if cat(f) == "pdf"]
+            if not pdfs:
+                return "Dry-run: stamp — add a PDF"
+            dst = os.path.join(out, (self.stamp_out_name.get().strip() or "stamped") + ".pdf")
+            return f"Dry-run: Stamp PDF → {dst}"
+        if action == "metadata":
+            pdfs = [f for f in self.files if cat(f) == "pdf"]
+            if not pdfs:
+                return "Dry-run: metadata — add a PDF"
+            dst = os.path.join(out, (self.meta_out.get().strip() or "updated") + ".pdf")
+            return f"Dry-run: Update metadata → {dst}"
+        if action == "video":
+            op = self.video_op.get()
+            if op == "merge":
+                av = [f for f in self.files if cat(f) in ("video", "audio")]
+                ext = self.video_merge_fmt.get().strip() or "mp4"
+                name = (self.video_out_name.get().strip() or "output") + "." + ext
+                return f"Dry-run: Media merge → {os.path.join(out, name)}  ({len(av)} media file(s))"
+            av = [f for f in self.files if cat(f) in ("video", "audio")]
+            if not av:
+                return "Dry-run: media split — add video/audio"
+            prefix = self.video_prefix.get().strip() or "segment"
+            fmt = self.video_fmt.get().strip().lstrip(".") or Path(av[0]).suffix.lstrip(".")
+            return f"Dry-run: Media split → under {out}/  (names like «{prefix}_seg*_….{fmt}»)"
+        if action == "upscale":
+            images = [f for f in self.files if cat(f) == "image"]
+            if not images:
+                return "Dry-run: upscale — add image(s)"
+            src = images[0]
+            suf = self.upscale_suffix.get().strip() or "_upscaled"
+            dst = os.path.join(out, f"{Path(src).stem}{suf}{Path(src).suffix}")
+            return f"Dry-run: Upscale → {dst}  ({len(images)} image(s))"
+        if action in ("summarise", "qa", "analyse", "chat", "unknown"):
+            return f"Dry-run: {action} — no batch file output from this button (UI / AI mode only)"
+        return f"Dry-run: action «{action}» — review JSON or use a supported tool action"
 
     def _sync_command_from_latest_intent(self):
         if not self._latest_intent:
@@ -2031,6 +2153,7 @@ class AIWorkshopApp(tk.Tk):
             import json
             json.loads(self.cmd_json.get("1.0", "end-1c").strip() or "{}")
             messagebox.showinfo("Valid JSON", "Intent JSON is valid.")
+            self._refresh_command_dry_run()
         except Exception as e:
             messagebox.showerror("Invalid JSON", str(e))
 
