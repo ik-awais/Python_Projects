@@ -6,15 +6,12 @@ import threading
 import re, json
 from pathlib import Path
 from typing import List, Dict, Optional, Callable
-
 try:
     from openai import OpenAI
     HAS_NIM = True
 except ImportError:
     HAS_NIM = False
-
 NIM_BASE_URL = "https://integrate.api.nvidia.com/v1"
-
 NIM_MODELS = [
     "meta/llama-3.3-70b-instruct",
     "meta/llama-3.1-70b-instruct",
@@ -22,19 +19,16 @@ NIM_MODELS = [
     "mistralai/mistral-large-2-instruct",
     "qwen/qwen3.5-122b-a10b",
 ]
-
 SYSTEM_PROMPT = """You are an AI assistant embedded inside File Workshop —
 a local desktop tool for converting, splitting, merging, organising,
 stamping, protecting, compressing and extracting content from files
 (PDF, Word, Excel, PowerPoint, CSV, images, audio, video).
-
-Your job:
+Your job
 1. Answer questions about the user's loaded files.
 2. Understand natural-language commands and map them to tool actions.
 3. Summarise, analyse, and explain file content when asked.
 4. Suggest the best output format for a given task.
 5. Be concise and precise.
-
 When the user gives a file-operation command, respond with a JSON block
 like this (inside ```json ... ``` fences):
 {
@@ -45,17 +39,12 @@ like this (inside ```json ... ``` fences):
   "params": {},
   "message": "I'll convert report.pdf to Word format."
 }
-
 Supported actions: convert, split, merge, organise, compress, protect,
                    stamp, summarise, analyse, chat, unknown
-
 If the user is just chatting, set action to "chat" and reply normally.
 """
-
-
 class NIMClient:
     """NVIDIA NIM client — OpenAI-compatible, drop-in for GeminiClient."""
-
     def __init__(self, api_key: str, model_name: str = "meta/llama-3.3-70b-instruct"):
         self.api_key    = api_key
         self.model_name = model_name

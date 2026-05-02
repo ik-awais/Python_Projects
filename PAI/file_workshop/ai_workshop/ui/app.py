@@ -28,13 +28,14 @@ from core.processor import (
     compress_pdf, encrypt_pdf, decrypt_pdf,
     watermark_text, watermark_pdf_overlay,
     get_metadata, set_metadata,
-    video_split, video_merge, video_get_duration, format_duration,
+    video_split, video_merge, audio_merge, video_get_duration, format_duration,
     _parse_time, audio_split,
     HAS_PYPDF, HAS_PDFPLUMBER, HAS_DOCX, HAS_PIL,
-    HAS_PDF2IMAGE, HAS_FFMPEG, HAS_OPENPYXL, HAS_PPTX, HAS_LIBREOFFICE,
+    HAS_PDF2IMAGE, HAS_FFMPEG, HAS_OPENPYXL, HAS_PPTX, HAS_LIBREOFFICE, HAS_CAIROSVG,
     IMAGE_EXTS, AUDIO_EXTS, VIDEO_EXTS, EXCEL_EXTS, PPTX_EXTS, CSV_EXTS
 )
 from ai.gemini import GeminiClient, HAS_GENAI
+from ai.nvidia_nim import NIMClient, HAS_NIM, NIM_MODELS
 from ai.extractor import extract_text, get_file_summary_context, is_image, is_text_extractable
 from utils.upscaler import upscale_image, batch_upscale, get_image_info, SCALE_METHODS, HAS_PIL as UP_PIL
 
@@ -146,6 +147,26 @@ def _clean_ai_response(text: str) -> str:
     text = _re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()
 
+def _extract_intent_json(text: str) -> Optional[Dict]:
+    """Extract intent JSON from AI response fences or bare object."""
+    if not text:
+        return None
+    m = _re.search(r"```json\s*(\{.*?\})\s*```", text, flags=_re.DOTALL)
+    if m:
+        try:
+            import json
+            return json.loads(m.group(1))
+        except Exception:
+            pass
+    m2 = _re.search(r"\{[\s\S]*?\}", text)
+    if m2:
+        try:
+            import json
+            return json.loads(m2.group(0))
+        except Exception:
+            return None
+    return None
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # MAIN APP
@@ -156,10 +177,11 @@ class AIWorkshopApp(tk.Tk):
     TABS = [
         ("🏠", "Home",      "home"),
         ("🤖", "AI Chat",   "aichat"),
+        ("🧠", "AI Command", "command"),
         ("🔄", "Convert",   "convert"),
         ("✂️",  "Split",     "split"),
         ("🔗", "Merge",     "merge"),
-        ("🎬", "Video",     "video"),
+        ("🎬", "Media",     "video"),
         ("📐", "Organise",  "organise"),
         ("🖼",  "Upscale",   "upscale"),
         ("💧", "Stamp",     "stamp"),
@@ -183,18 +205,23 @@ class AIWorkshopApp(tk.Tk):
         self.page_count = 0
         self.active_pdf = ""
         self.ai_context_file = ""
+        self.ui_scale = float(self.cfg.get("ui_scale", 1.0) or 1.0)
 
-        self.ai = GeminiClient(
-            self.cfg.get("gemini_api_key", ""),
-            self.cfg.get("gemini_model", "gemini-1.5-flash")
-        )
+        self.ai = self._make_ai_client()
 
         self.pages: Dict[str, tk.Frame] = {}
         self.tab_btns: Dict[str, tk.Button] = {}
         self._running_ops: int = 0          # count of active background operations
         self._op_history: List[Dict] = []   # full log history for the Log tab
+        self._latest_intent: Optional[Dict] = None
+        self._latest_intent_raw: str = ""
 
         self._build()
+        self._apply_zoom(self.ui_scale)
+        self.bind_all("<Control-plus>", lambda e: self._zoom_in())
+        self.bind_all("<Control-equal>", lambda e: self._zoom_in())
+        self.bind_all("<Control-minus>", lambda e: self._zoom_out())
+        self.bind_all("<Control-0>", lambda e: self._zoom_reset())
         self._switch_tab("aichat")
         self._status("Welcome — click 🤖 AI Chat to get started")
         self._update_ai_status()
@@ -244,6 +271,8 @@ class AIWorkshopApp(tk.Tk):
         self.ai_status_lbl.pack(side="left", padx=(0, 10))
 
         mk_btn(right, "📜 Log",        lambda: self._switch_tab("log"), BORDER2).pack(side="left", padx=2)
+        mk_btn(right, "A-",            self._zoom_out, BORDER2).pack(side="left", padx=2)
+        mk_btn(right, "A+",            self._zoom_in, BORDER2).pack(side="left", padx=2)
         mk_btn(right, "⚙  Settings",   self._open_settings,   BORDER2).pack(side="left", padx=2)
         mk_btn(right, "📂 Output",      self._open_output,     BORDER2).pack(side="left", padx=2)
         mk_btn(right, "+ Add Files",    self._add_files,       ACCENT).pack(side="left", padx=2)
@@ -305,6 +334,7 @@ class AIWorkshopApp(tk.Tk):
 
         self._build_home_page()
         self._build_aichat_page()
+        self._build_command_page()
         self._build_convert_page()
         self._build_split_page()
         self._build_merge_page()
@@ -341,6 +371,7 @@ class AIWorkshopApp(tk.Tk):
         self.ai_model_lbl.pack(side="left", padx=(12, 0))
 
         right_top = tk.Frame(top, bg=SIDEBAR); right_top.pack(side="right", padx=14)
+        mk_btn(right_top, "🧠 Command Center", lambda: self._switch_tab("command"), BORDER2).pack(side="left", padx=4)
         mk_btn(right_top, "🗑  Clear Chat", self._clear_chat, BORDER2).pack(side="left", padx=4)
         mk_btn(right_top, "⚙  Settings",   self._open_settings, BORDER2).pack(side="left", padx=4)
 
@@ -493,6 +524,43 @@ class AIWorkshopApp(tk.Tk):
             "analyse images, plan a workflow, or just chat.\n\n"
             "To get started: add some files using + Add Files, then ask me anything!"
         )
+
+    def _build_command_page(self):
+        f = self.pages["command"]
+        section_hdr(f, "AI COMMAND CENTER", "Review, edit and execute AI plans safely")
+
+        top = card(f)
+        lbl(top, "Intent summary", head=True).pack(anchor="w", pady=(0, 8))
+        self.cmd_summary_var = tk.StringVar(
+            value="No parsed plan yet. Ask AI in chat with a command (e.g. 'convert report.pdf to docx')."
+        )
+        tk.Label(top, textvariable=self.cmd_summary_var, font=F["body"], bg=PANEL, fg=TEXT2,
+                 wraplength=900, justify="left").pack(anchor="w")
+
+        json_card = card(f)
+        hdr = tk.Frame(json_card, bg=PANEL); hdr.pack(fill="x")
+        lbl(hdr, "Parsed intent JSON", head=True).pack(side="left")
+        mk_btn(hdr, "Validate JSON", self._validate_command_json, BORDER2, pady=4).pack(side="right")
+        self.cmd_json = tk.Text(json_card, height=14, font=F["mono_sm"], bg=LOG_BG, fg=TEXT,
+                                insertbackground=TEXT, relief="flat", bd=0, wrap="none")
+        self.cmd_json.pack(fill="x", pady=(8, 0))
+
+        files_card = card(f)
+        lbl(files_card, "Files AI matched", head=True).pack(anchor="w", pady=(0, 8))
+        self.cmd_files_lb = tk.Listbox(files_card, height=8, font=F["mono_sm"], bg=LOG_BG, fg=TEXT,
+                                       relief="flat", bd=0, selectbackground=ACCENT, selectforeground="#fff")
+        self.cmd_files_lb.pack(fill="x")
+
+        confirm = card(f)
+        lbl(confirm, "Confirmation before execution", head=True).pack(anchor="w", pady=(0, 8))
+        self.cmd_confirm_var = tk.BooleanVar(value=True)
+        tk.Checkbutton(confirm,
+            text="I have reviewed this plan and want to execute exactly this JSON plan",
+            variable=self.cmd_confirm_var, font=F["small"], bg=PANEL, fg=TEXT2,
+            selectcolor=ACCENT, activebackground=PANEL, cursor="hand2").pack(anchor="w")
+        btns = tk.Frame(confirm, bg=PANEL); btns.pack(anchor="w", pady=(10, 0))
+        mk_big_btn(btns, "▶ Run Exactly This Plan", self._run_command_plan, ACCENT3).pack(side="left", padx=(0, 8))
+        mk_btn(btns, "↻ Sync from latest AI reply", self._sync_command_from_latest_intent, BORDER2).pack(side="left")
 
     # ══════════════════════════════════════════════════════════════════════════
     # HOME PAGE  —  the friendly landing experience
@@ -825,7 +893,7 @@ class AIWorkshopApp(tk.Tk):
 
     def _build_video_page(self):
         f = self.pages["video"]
-        section_hdr(f, "VIDEO / AUDIO TOOLS", "Split by time or merge multiple files — requires ffmpeg")
+        section_hdr(f, "MEDIA TOOLS", "Split/merge audio or video by time — requires ffmpeg")
 
         if not HAS_FFMPEG:
             warn_card = card(f)
@@ -937,11 +1005,13 @@ class AIWorkshopApp(tk.Tk):
             fmt_row = tk.Frame(f, bg=PANEL); fmt_row.pack(fill="x", pady=(10, 0))
             lbl(fmt_row, "Output format:", w=14, dim=True).pack(side="left")
             self.video_merge_fmt = tk.StringVar(value="mp4")
-            for fmt in ["mp4", "mkv", "avi", "mov", "mp3", "wav"]:
+            for fmt in ["mp4", "mkv", "avi", "mov", "mp3", "wav", "flac", "aac", "ogg", "m4a"]:
                 tk.Radiobutton(fmt_row, text=fmt, variable=self.video_merge_fmt, value=fmt,
                                font=F["btn"], bg=PANEL, fg=TEXT2,
                                selectcolor=ACCENT, activebackground=PANEL,
                                cursor="hand2").pack(side="left", padx=(0, 10))
+            lbl(f, "Tip: for audio-only queues, prefer MP3/WAV/FLAC output formats.",
+                dim=True).pack(anchor="w", pady=(6, 0))
 
     def _add_segment_row(self):
         if not hasattr(self, "video_segment_rows"):
@@ -970,8 +1040,11 @@ class AIWorkshopApp(tk.Tk):
         if not av_files:
             self.video_merge_preview.insert("end", "  No video/audio files in queue.")
         else:
-            for i, fp in enumerate(av_files, 1):
+            show_n = min(120, len(av_files))
+            for i, fp in enumerate(av_files[:show_n], 1):
                 self.video_merge_preview.insert("end", f"  {i:2d}.  {cat_icon(cat(fp))}  {Path(fp).name}\n")
+            if len(av_files) > show_n:
+                self.video_merge_preview.insert("end", f"\n  ... and {len(av_files)-show_n} more")
         self.video_merge_preview.config(state="disabled")
 
     def _build_organise_page(self):
@@ -1608,7 +1681,8 @@ class AIWorkshopApp(tk.Tk):
 
             def task():
                 self._log(f"Splitting {Path(src).name} into {len(segments)} segment(s) …")
-                files = video_split(src, segments, out, prefix, fmt)
+                split_fn = audio_split if cat(src) == "audio" else video_split
+                files = split_fn(src, segments, out, prefix, fmt)
                 for fp in files:
                     sz = os.path.getsize(fp) / (1024*1024)
                     self._log(f"✔ {Path(fp).name}  ({sz:.1f} MB)", "ok")
@@ -1626,13 +1700,17 @@ class AIWorkshopApp(tk.Tk):
             name = (self.video_out_name.get().strip() or "output") + "." + ext
             dst  = os.path.join(out, name)
 
+            only_audio = all(cat(fp) == "audio" for fp in av)
+
             def task():
                 self._log(f"Merging {len(av)} file(s) → {name} …")
-                video_merge(av, dst, log=self._log)
+                merge_fn = audio_merge if only_audio else video_merge
+                merge_fn(av, dst, log=self._log)
                 sz = os.path.getsize(dst) / (1024*1024)
                 self._log(f"✔ {Path(dst).name}  ({sz:.1f} MB)", "ok")
                 self._status(f"Merge done — {Path(dst).name}")
-            self._run_task(f"Video Merge → {name}", task, self._open_output)
+            mode_label = "Audio Merge" if only_audio else "Media Merge"
+            self._run_task(f"{mode_label} → {name}", task, self._open_output)
 
     def _ai_video_suggest(self):
         """Ask AI for advice about the current video/audio file."""
@@ -1760,7 +1838,7 @@ class AIWorkshopApp(tk.Tk):
             return
         text_to_send = raw.strip()
         if not self.ai.is_ready:
-            self._ai_sys("⚠  AI not configured. Open ⚙ Settings and enter your Gemini API key.")
+            self._ai_sys("⚠  AI not configured. Open ⚙ Settings and connect NVIDIA NIM or Gemini.")
             return
         self.chat_input.delete("1.0","end")
         self._set_placeholder()
@@ -1906,19 +1984,110 @@ class AIWorkshopApp(tk.Tk):
         self.chat_display.config(state="disabled")
         self._log(f"AI responded ({len(text)} chars)", "ai")
         if check_intent:
-            from ai.nvidia_nim import _extract_json
-            intent = _extract_json(text)
+            intent = _extract_intent_json(text)
             if intent and intent.get("action") not in (None, "chat", "unknown"):
+                self._latest_intent = intent
+                self._latest_intent_raw = text
+                self._update_command_center(intent, text)
                 self._apply_intent(intent)
 
-    def _apply_intent(self, intent: dict):
-        action = intent.get("action",""); fmt = intent.get("format"); msg = intent.get("message","")
+    def _match_intent_files(self, intent: dict) -> List[str]:
+        hints = [str(x).strip().lower() for x in (intent.get("files") or []) if str(x).strip()]
+        if not hints:
+            return []
+        matched = []
+        for fp in self.files:
+            name = Path(fp).name.lower()
+            if any(h in name for h in hints):
+                matched.append(fp)
+        return matched
+
+    def _update_command_center(self, intent: dict, raw_text: str = ""):
+        if not hasattr(self, "cmd_json"):
+            return
+        import json
+        self.cmd_json.delete("1.0", "end")
+        self.cmd_json.insert("1.0", json.dumps(intent, indent=2))
+        self.cmd_files_lb.delete(0, "end")
+        matched = self._match_intent_files(intent)
+        if matched:
+            for fp in matched:
+                self.cmd_files_lb.insert("end", f"{cat_icon(cat(fp))}  {Path(fp).name}")
+        else:
+            self.cmd_files_lb.insert("end", "(no direct file match from AI hints)")
+        action = intent.get("action", "unknown")
+        msg = intent.get("message", "")
+        self.cmd_summary_var.set(f"Action: {action}" + (f"  |  {msg}" if msg else ""))
+
+    def _sync_command_from_latest_intent(self):
+        if not self._latest_intent:
+            messagebox.showinfo("No Plan", "No parsed AI command found yet.")
+            return
+        self._update_command_center(self._latest_intent, self._latest_intent_raw)
+        self._status("Command Center synced from latest AI plan")
+
+    def _validate_command_json(self):
+        try:
+            import json
+            json.loads(self.cmd_json.get("1.0", "end-1c").strip() or "{}")
+            messagebox.showinfo("Valid JSON", "Intent JSON is valid.")
+        except Exception as e:
+            messagebox.showerror("Invalid JSON", str(e))
+
+    def _run_command_plan(self):
+        if not self.cmd_confirm_var.get():
+            messagebox.showwarning("Confirmation Required", "Please confirm before execution.")
+            return
+        try:
+            import json
+            intent = json.loads(self.cmd_json.get("1.0", "end-1c").strip())
+        except Exception as e:
+            messagebox.showerror("Invalid JSON", f"Cannot execute invalid JSON:\n{e}")
+            return
+        self._apply_intent(intent, run_now=True)
+
+    def _apply_intent(self, intent: dict, run_now: bool = False):
+        action = (intent.get("action", "") or "").strip().lower()
+        fmt = (intent.get("format") or "").strip().lower()
+        msg = intent.get("message","")
+        pages = intent.get("pages")
+        params = intent.get("params") or {}
+
         if action == "convert" and fmt:
-            self._select_fmt(fmt); self._switch_tab("convert")
-            self._ai_sys(f"✅ Switched to Convert tab and set format to {fmt.upper()}")
-        elif action in ("split","merge","compress","protect","organise","stamp","metadata","video","upscale"):
+            self._select_fmt(fmt)
+            self._switch_tab("convert")
+            if pages:
+                self.conv_pages.set(str(pages))
+            self._ai_sys(f"✅ Prepared Convert tab → {fmt.upper()}" + (f" (pages: {pages})" if pages else ""))
+            if run_now or params.get("run_now") or params.get("auto_run"):
+                self._run_convert()
+        elif action in ("split","merge","compress","protect","organise","stamp","metadata","video","media","upscale"):
+            if action == "media":
+                action = "video"
             self._switch_tab(action)
             self._ai_sys(f"✅ Switched to {action.title()} tab for you")
+            if run_now:
+                runner = {
+                    "split": self._run_split,
+                    "merge": self._run_merge,
+                    "compress": self._run_compress,
+                    "protect": self._run_protect,
+                    "organise": self._run_organise,
+                    "stamp": self._run_stamp,
+                    "metadata": self._run_metadata,
+                    "video": self._run_video,
+                    "upscale": self._run_upscale,
+                }.get(action)
+                if runner:
+                    runner()
+        elif action == "summarise":
+            self._set_ai_mode("summarise")
+            self._ai_sys("✅ Switched AI mode to Summarise.")
+        elif action in ("analyse", "qa"):
+            self._set_ai_mode("qa")
+            self._ai_sys("✅ Switched AI mode to Doc Q&A.")
+        if msg:
+            self._ai_sys("🧭 " + msg)
 
     def _ai_error(self, msg: str):
         def _do():
@@ -2004,7 +2173,7 @@ class AIWorkshopApp(tk.Tk):
         win = tk.Toplevel(self)
         win.title("Settings — File Workshop AI")
         win.configure(bg=BG)
-        win.geometry("600x520")
+        win.geometry("700x620")
         win.resizable(False, False)
         win.transient(self); win.grab_set()
 
@@ -2014,75 +2183,129 @@ class AIWorkshopApp(tk.Tk):
 
         c2 = tk.Frame(win, bg=PANEL, padx=24, pady=18)
         c2.pack(fill="x", padx=18, pady=(16, 0))
-        tk.Label(c2, text="🤖  GEMINI API KEY",
+        tk.Label(c2, text="🤖  AI PROVIDER & KEYS",
                  font=("Segoe UI", 11, "bold"), bg=PANEL, fg=ACCENT3).pack(anchor="w", pady=(0,12))
 
         guide_box = tk.Frame(c2, bg=CARD2, padx=14, pady=10)
         guide_box.pack(fill="x", pady=(0,14))
-        tk.Label(guide_box, text="How to get your FREE Gemini API key:",
+        tk.Label(guide_box, text="Connect either NVIDIA NIM or Gemini (you can switch anytime):",
                  font=("Segoe UI", 9, "bold"), bg=CARD2, fg=TEXT).pack(anchor="w")
-        for step in ["1.  Go to  https://aistudio.google.com/app/apikey",
-                     "2.  Sign in with your Google account",
-                     "3.  Click  'Create API key'  and copy it",
-                     "4.  Paste below and click  Save & Apply"]:
+        for step in ["1.  Select provider below",
+                    "2.  Paste key for that provider",
+                    "3.  Pick a model",
+                    "4.  Click Save & Apply, then Test Connection"]:
             tk.Label(guide_box, text=step, font=("Consolas", 9),
                      bg=CARD2, fg=TEXT2).pack(anchor="w")
 
-        tk.Label(c2, text="API Key:", font=("Segoe UI", 10, "bold"),
+        provider_var = tk.StringVar(value=self.cfg.get("ai_provider", "nvidia"))
+        pr = tk.Frame(c2, bg=PANEL); pr.pack(fill="x", pady=(0, 10))
+        tk.Label(pr, text="Provider:", font=("Segoe UI", 10, "bold"),
+                 bg=PANEL, fg=TEXT).pack(side="left")
+        for v, label in [("nvidia", "NVIDIA NIM"), ("gemini", "Google Gemini")]:
+            tk.Radiobutton(pr, text=label, variable=provider_var, value=v,
+                           font=("Segoe UI", 10), bg=PANEL, fg=TEXT,
+                           selectcolor=ACCENT3, activebackground=PANEL,
+                           cursor="hand2").pack(side="left", padx=(12, 8))
+
+        tk.Label(c2, text="NVIDIA API Key:", font=("Segoe UI", 10, "bold"),
                  bg=PANEL, fg=TEXT).pack(anchor="w", pady=(0,4))
-        key_row = tk.Frame(c2, bg=PANEL); key_row.pack(fill="x", pady=(0,6))
-        key_var = tk.StringVar(value=self.cfg.get("gemini_api_key",""))
-        key_entry = tk.Entry(key_row, textvariable=key_var,
-                              font=("Consolas", 11),
+        nvidia_key_row = tk.Frame(c2, bg=PANEL); nvidia_key_row.pack(fill="x", pady=(0,6))
+        nvidia_key_var = tk.StringVar(value=self.cfg.get("nvidia_api_key",""))
+        nvidia_key_entry = tk.Entry(nvidia_key_row, textvariable=nvidia_key_var,
+                              font=("Consolas", 10),
                               bg=CARD2, fg=TEXT, insertbackground=TEXT,
-                              show="•", relief="flat", bd=0, width=42)
-        key_entry.pack(side="left", ipady=8, padx=(0,8))
-        key_entry.focus_set()
+                              show="•", relief="flat", bd=0, width=56)
+        nvidia_key_entry.pack(side="left", ipady=8, padx=(0,8))
+
+        tk.Label(c2, text="Gemini API Key:", font=("Segoe UI", 10, "bold"),
+                 bg=PANEL, fg=TEXT).pack(anchor="w", pady=(0,4))
+        gemini_key_row = tk.Frame(c2, bg=PANEL); gemini_key_row.pack(fill="x", pady=(0,6))
+        gemini_key_var = tk.StringVar(value=self.cfg.get("gemini_api_key",""))
+        gemini_key_entry = tk.Entry(gemini_key_row, textvariable=gemini_key_var,
+                              font=("Consolas", 10),
+                              bg=CARD2, fg=TEXT, insertbackground=TEXT,
+                              show="•", relief="flat", bd=0, width=56)
+        gemini_key_entry.pack(side="left", ipady=8, padx=(0,8))
         show_var = tk.BooleanVar(value=False)
-        tk.Checkbutton(key_row, text="Show", variable=show_var,
-                        command=lambda: key_entry.config(show="" if show_var.get() else "•"),
+        tk.Checkbutton(c2, text="Show all keys", variable=show_var,
+                        command=lambda: (
+                            nvidia_key_entry.config(show="" if show_var.get() else "•"),
+                            gemini_key_entry.config(show="" if show_var.get() else "•"),
+                        ),
                         font=("Segoe UI",9), bg=PANEL, fg=TEXT2,
                         selectcolor=ACCENT, activebackground=PANEL,
-                        cursor="hand2").pack(side="left")
+                        cursor="hand2").pack(anchor="w")
 
-        tk.Label(c2, text="Model:", font=("Segoe UI", 10, "bold"),
+        tk.Label(c2, text="Hugging Face Token (optional):", font=("Segoe UI", 10, "bold"),
                  bg=PANEL, fg=TEXT).pack(anchor="w", pady=(10,4))
-        model_var = tk.StringVar(value=self.cfg.get("gemini_model","gemini-1.5-flash"))
-        model_row = tk.Frame(c2, bg=PANEL); model_row.pack(fill="x", pady=(0,4))
-        for m in GEMINI_MODELS:
-            tk.Radiobutton(model_row, text=m, variable=model_var, value=m,
-                           font=("Consolas",10), bg=PANEL, fg=TEXT,
+        hf_var = tk.StringVar(value=self.cfg.get("huggingface_token",""))
+        hf_entry = tk.Entry(c2, textvariable=hf_var,
+                            font=("Consolas", 10),
+                            bg=CARD2, fg=TEXT, insertbackground=TEXT,
+                            show="•", relief="flat", bd=0, width=56)
+        hf_entry.pack(anchor="w", ipady=8, pady=(0, 4))
+        tk.Label(c2, text="Stored for future model integrations in this app.",
+                 font=("Segoe UI", 8, "italic"), bg=PANEL, fg=TEXT2).pack(anchor="w")
+
+        tk.Label(c2, text="NVIDIA Model:", font=("Segoe UI", 10, "bold"),
+                 bg=PANEL, fg=TEXT).pack(anchor="w", pady=(10,4))
+        nvidia_model_var = tk.StringVar(value=self.cfg.get("nvidia_model","meta/llama-3.1-70b-instruct"))
+        nvidia_model_row = tk.Frame(c2, bg=PANEL); nvidia_model_row.pack(fill="x", pady=(0,4))
+        for m in NIM_MODELS:
+            tk.Radiobutton(nvidia_model_row, text=m, variable=nvidia_model_var, value=m,
+                           font=("Consolas",9), bg=PANEL, fg=TEXT,
                            selectcolor=ACCENT3, activebackground=PANEL,
-                           cursor="hand2").pack(side="left", padx=(0,16))
-        model_descs = {"gemini-1.5-flash":"⚡ Fast & efficient",
-                       "gemini-1.5-pro":"🧠 Powerful analysis",
-                       "gemini-2.0-flash":"🚀 Latest & fastest"}
-        mdl = tk.Label(c2, text=model_descs.get(model_var.get(),""),
-                        font=("Segoe UI",9,"italic"), bg=PANEL, fg=TEXT2)
-        mdl.pack(anchor="w")
-        model_var.trace_add("write", lambda *_: mdl.config(text=model_descs.get(model_var.get(),"")))
+                           cursor="hand2").pack(anchor="w")
+
+        tk.Label(c2, text="Gemini Model:", font=("Segoe UI", 10, "bold"),
+                 bg=PANEL, fg=TEXT).pack(anchor="w", pady=(10,4))
+        gemini_model_var = tk.StringVar(value=self.cfg.get("gemini_model","gemini-1.5-flash"))
+        gemini_model_row = tk.Frame(c2, bg=PANEL); gemini_model_row.pack(fill="x", pady=(0,4))
+        for m in GEMINI_MODELS:
+            tk.Radiobutton(gemini_model_row, text=m, variable=gemini_model_var, value=m,
+                           font=("Consolas",9), bg=PANEL, fg=TEXT,
+                           selectcolor=ACCENT3, activebackground=PANEL,
+                           cursor="hand2").pack(anchor="w")
 
         status_lbl = tk.Label(win, text="", font=("Segoe UI",10), bg=BG, fg=SUCCESS)
         status_lbl.pack(anchor="w", padx=20, pady=(12,0))
 
         def save():
-            key = key_var.get().strip(); model = model_var.get()
-            self.cfg["gemini_api_key"] = key; self.cfg["gemini_model"] = model
+            self.cfg["ai_provider"] = provider_var.get()
+            self.cfg["nvidia_api_key"] = nvidia_key_var.get().strip()
+            self.cfg["nvidia_model"] = nvidia_model_var.get()
+            self.cfg["gemini_api_key"] = gemini_key_var.get().strip()
+            self.cfg["gemini_model"] = gemini_model_var.get()
+            self.cfg["huggingface_token"] = hf_var.get().strip()
             self.cfg["output_dir"] = self.out_dir.get()
             save_config(self.cfg)
-            if key:
-                self.ai.reconfigure(key, model); self._update_ai_status()
+
+            self.ai = self._make_ai_client()
+            self._update_ai_status()
+            if self.ai.is_ready:
+                provider = self.cfg.get("ai_provider", "nvidia").title()
+                model = self.cfg.get("nvidia_model") if self.cfg.get("ai_provider") == "nvidia" else self.cfg.get("gemini_model")
                 status_lbl.config(text="✔  Saved! AI is now active.", fg=SUCCESS)
-                self._ai_sys(f"✔ AI configured with model: {model}")
+                self._ai_sys(f"✔ AI configured: {provider} / {model}")
                 win.after(1200, win.destroy)
             else:
-                status_lbl.config(text="⚠  No API key — AI features disabled", fg=WARN)
+                status_lbl.config(text="⚠  Saved, but AI is not active. Add a valid key.", fg=WARN)
 
         def test():
-            key = key_var.get().strip()
-            if not key: status_lbl.config(text="⚠  Paste your API key first", fg=WARN); return
+            provider = provider_var.get()
+            if provider == "nvidia":
+                key = nvidia_key_var.get().strip()
+                model = nvidia_model_var.get()
+                tmp = NIMClient(key, model)
+            else:
+                key = gemini_key_var.get().strip()
+                model = gemini_model_var.get()
+                tmp = GeminiClient(key, model)
+
+            if not key:
+                status_lbl.config(text="⚠  Paste your API key first", fg=WARN)
+                return
             status_lbl.config(text="⏳  Testing …", fg=TEXT2)
-            tmp = GeminiClient(key, model_var.get())
             if tmp.is_ready:
                 tmp.chat("Reply with exactly: Connection OK",
                           on_done=lambda r: status_lbl.config(text=f"✔  {r.strip()[:80]}", fg=SUCCESS),
@@ -2105,11 +2328,16 @@ class AIWorkshopApp(tk.Tk):
                   cursor="hand2", padx=14, pady=9, bd=0).pack(side="left")
 
         lf2 = tk.Frame(win, bg=BG); lf2.pack(anchor="w", padx=20)
-        tk.Label(lf2, text="Get API key: ", font=("Segoe UI",9), bg=BG, fg=TEXT2).pack(side="left")
-        link = tk.Label(lf2, text="https://aistudio.google.com/app/apikey",
+        tk.Label(lf2, text="Get keys: ", font=("Segoe UI",9), bg=BG, fg=TEXT2).pack(side="left")
+        link = tk.Label(lf2, text="NVIDIA NIM",
                          font=("Segoe UI",9,"underline"), bg=BG, fg=C["info"], cursor="hand2")
         link.pack(side="left")
-        link.bind("<Button-1>", lambda e: self._open_url("https://aistudio.google.com/app/apikey"))
+        link.bind("<Button-1>", lambda e: self._open_url("https://build.nvidia.com/"))
+        tk.Label(lf2, text="  |  ", font=("Segoe UI",9), bg=BG, fg=TEXT2).pack(side="left")
+        link2 = tk.Label(lf2, text="Gemini", font=("Segoe UI",9,"underline"),
+                         bg=BG, fg=C["info"], cursor="hand2")
+        link2.pack(side="left")
+        link2.bind("<Button-1>", lambda e: self._open_url("https://aistudio.google.com/app/apikey"))
 
     def _open_url(self, url):
         import webbrowser; webbrowser.open(url)
@@ -2121,7 +2349,7 @@ class AIWorkshopApp(tk.Tk):
     def _add_files(self):
         all_exts = ("*.pdf *.docx *.xlsx *.xls *.xlsm *.pptx *.ppt *.csv *.tsv "
                     "*.txt *.html *.htm "
-                    "*.png *.jpg *.jpeg *.webp *.bmp *.gif *.tiff *.ico "
+                    "*.png *.jpg *.jpeg *.webp *.bmp *.gif *.tiff *.ico *.svg "
                     "*.mp4 *.avi *.mov *.mkv *.webm *.mp3 *.wav *.ogg *.flac *.aac *.m4a")
         paths = filedialog.askopenfilenames(
             title="Select files",
@@ -2129,27 +2357,33 @@ class AIWorkshopApp(tk.Tk):
                        ("PDF","*.pdf"), ("Excel","*.xlsx *.xls *.xlsm *.ods"),
                        ("PowerPoint","*.pptx *.ppt"), ("CSV","*.csv *.tsv"),
                        ("Word","*.docx"),
-                       ("Images","*.png *.jpg *.jpeg *.webp *.bmp *.gif *.tiff *.ico"),
+                       ("Images","*.png *.jpg *.jpeg *.webp *.bmp *.gif *.tiff *.ico *.svg"),
                        ("Audio","*.mp3 *.wav *.ogg *.flac *.aac *.m4a"),
                        ("Video","*.mp4 *.avi *.mov *.mkv *.webm"),
                        ("All files","*.*")])
-        for p in paths:
-            if p not in self.files:
-                self.files.append(p); c2 = cat(p)
-                self.queue_lb.insert("end", f"  {cat_icon(c2)}  {Path(p).name}  [{c2}]")
+        existing = set(self.files)
+        new_items = [p for p in paths if p not in existing]
+        if new_items:
+            self.files.extend(new_items)
+            rows = [f"  {cat_icon(cat(p))}  {Path(p).name}  [{cat(p)}]" for p in new_items]
+            self.queue_lb.insert("end", *rows)
         self._update_after_files()
 
     def _add_folder(self):
         folder = filedialog.askdirectory(title="Add all files from folder")
         if not folder: return
         exts = IMAGE_EXTS|AUDIO_EXTS|VIDEO_EXTS|EXCEL_EXTS|PPTX_EXTS|CSV_EXTS|{".pdf",".docx",".txt",".html",".htm"}
-        added = 0
+        existing = set(self.files)
+        added_paths = []
         for path in sorted(Path(folder).iterdir()):
-            if path.suffix.lower() in exts and str(path) not in self.files:
-                self.files.append(str(path)); c2 = cat(str(path))
-                self.queue_lb.insert("end", f"  {cat_icon(c2)}  {path.name}  [{c2}]")
-                added += 1
-        self._log(f"Added {added} file(s) from folder.")
+            p = str(path)
+            if path.suffix.lower() in exts and p not in existing:
+                added_paths.append(p)
+        if added_paths:
+            self.files.extend(added_paths)
+            rows = [f"  {cat_icon(cat(p))}  {Path(p).name}  [{cat(p)}]" for p in added_paths]
+            self.queue_lb.insert("end", *rows)
+        self._log(f"Added {len(added_paths)} file(s) from folder.")
         self._update_after_files()
 
     def _update_after_files(self):
@@ -2157,7 +2391,12 @@ class AIWorkshopApp(tk.Tk):
         self._status(f"{n} file(s) in queue")
         if not self.out_dir.get() and self.files:
             self.out_dir.set(str(Path(self.files[0]).parent/"workshop_output"))
-        pdfs = [f for f in self.files if cat(f)=="pdf"]
+        by_type = {}
+        for fp in self.files:
+            c = cat(fp)
+            by_type.setdefault(c, []).append(fp)
+
+        pdfs = by_type.get("pdf", [])
         if pdfs and HAS_PYPDF:
             try:
                 pc = pdf_page_count(pdfs[0]); self.page_count = pc; self.active_pdf = pdfs[0]
@@ -2166,19 +2405,19 @@ class AIWorkshopApp(tk.Tk):
                 self.split_info_lbl.config(text=f"Active PDF: {name} · {pc} pages", fg=SUCCESS)
                 self.org_lbl_var.set(f"Active PDF: {name}  ·  {pc} pages")
             except: pass
-        pptxs = [f for f in self.files if cat(f)=="pptx"]
+        pptxs = by_type.get("pptx", [])
         if pptxs and HAS_PPTX:
             try:
                 sc = pptx_slide_count(pptxs[0])
                 self.split_info_lbl.config(
                     text=f"Active PPTX: {Path(pptxs[0]).name} · {sc} slides", fg=SUCCESS)
             except: pass
-        images = [f for f in self.files if cat(f)=="image"]
+        images = by_type.get("image", [])
         if images:
             self.upscale_info_lbl.config(
                 text=f"{len(images)} image(s) ready to upscale. Click 'Preview Info' to inspect.",
                 fg=SUCCESS)
-        av = [f for f in self.files if cat(f) in ("video","audio")]
+        av = by_type.get("video", []) + by_type.get("audio", [])
         if av:
             self.video_info_lbl.config(
                 text=f"{len(av)} video/audio file(s) loaded. First: {Path(av[0]).name}",
@@ -2217,8 +2456,11 @@ class AIWorkshopApp(tk.Tk):
         if not self.files:
             self.merge_preview.insert("end","  No files in queue.")
         else:
-            for i,fp in enumerate(self.files,1):
+            show_n = min(140, len(self.files))
+            for i,fp in enumerate(self.files[:show_n],1):
                 self.merge_preview.insert("end",f"  {i:2d}.  {cat_icon(cat(fp))}  {Path(fp).name}\n")
+            if len(self.files) > show_n:
+                self.merge_preview.insert("end", f"\n  ... and {len(self.files)-show_n} more")
         self.merge_preview.config(state="disabled")
 
     def _move_up(self):
@@ -2337,14 +2579,43 @@ class AIWorkshopApp(tk.Tk):
     # UTILITIES
     # ══════════════════════════════════════════════════════════════════════════
 
+    def _make_ai_client(self):
+        provider = (self.cfg.get("ai_provider", "nvidia") or "nvidia").lower()
+        if provider == "gemini":
+            return GeminiClient(
+                self.cfg.get("gemini_api_key", ""),
+                self.cfg.get("gemini_model", "gemini-1.5-flash"),
+            )
+        return NIMClient(
+            self.cfg.get("nvidia_api_key", ""),
+            self.cfg.get("nvidia_model", "meta/llama-3.1-70b-instruct"),
+        )
+
+    def _apply_zoom(self, scale: float):
+        scale = min(1.6, max(0.8, float(scale)))
+        self.ui_scale = scale
+        self.tk.call("tk", "scaling", scale)
+        self.cfg["ui_scale"] = round(scale, 2)
+        save_config(self.cfg)
+        self._status(f"Zoom: {int(scale * 100)}%")
+
+    def _zoom_in(self):
+        self._apply_zoom(self.ui_scale + 0.1)
+
+    def _zoom_out(self):
+        self._apply_zoom(self.ui_scale - 0.1)
+
+    def _zoom_reset(self):
+        self._apply_zoom(1.0)
+
     def _select_fmt(self, fmt: str):
         self.out_fmt.set(fmt)
         for f2, b in self._fmt_btns.items():
             b.config(bg=ACCENT if f2==fmt else CARD2,
                      fg="#ffffff" if f2==fmt else TEXT2)
         notes = {
-            "png": "" if HAS_PDF2IMAGE else "⚠  pip install pdf2image  +  sudo apt install poppler-utils",
-            "jpg": "" if HAS_PDF2IMAGE else "⚠  pip install pdf2image  +  sudo apt install poppler-utils",
+            "png": "" if (HAS_PDF2IMAGE and HAS_CAIROSVG) else "⚠  For PDF/SVG exports install: pip install pdf2image cairosvg (+ poppler-utils for PDF)",
+            "jpg": "" if (HAS_PDF2IMAGE and HAS_CAIROSVG) else "⚠  For PDF/SVG exports install: pip install pdf2image cairosvg (+ poppler-utils for PDF)",
             "docx": "" if HAS_DOCX else "⚠  pip install python-docx",
             "xlsx": "" if HAS_OPENPYXL else "⚠  pip install openpyxl",
             "pptx": "" if HAS_PPTX else "⚠  pip install python-pptx",
@@ -2366,16 +2637,24 @@ class AIWorkshopApp(tk.Tk):
         if key == "log":    self._apply_log_filter()
 
     def _update_ai_status(self):
+        provider = (self.cfg.get("ai_provider", "nvidia") or "nvidia").lower()
         if self.ai.is_ready:
-            model = self.cfg.get("gemini_model", "?")
-            self.ai_status_lbl.config(text=f"🟢 AI: {model}", fg=SUCCESS)
+            model = self.cfg.get("nvidia_model", "?") if provider == "nvidia" else self.cfg.get("gemini_model", "?")
+            prefix = "NIM" if provider == "nvidia" else "Gemini"
+            self.ai_status_lbl.config(text=f"🟢 AI ({prefix}): {model}", fg=SUCCESS)
             if hasattr(self, "ai_model_lbl"):
                 self.ai_model_lbl.config(text=f"· {model}", fg=ACCENT3)
-        elif not HAS_GENAI:
-            self.ai_status_lbl.config(text="🔴 AI: pip install openai", fg=ERROR)
-            if hasattr(self, "ai_model_lbl"):
-                self.ai_model_lbl.config(text="· not configured", fg=ERROR)
         else:
+            if provider == "nvidia" and not HAS_NIM:
+                self.ai_status_lbl.config(text="🔴 AI: pip install openai", fg=ERROR)
+                if hasattr(self, "ai_model_lbl"):
+                    self.ai_model_lbl.config(text="· NVIDIA client unavailable", fg=ERROR)
+                return
+            if provider == "gemini" and not HAS_GENAI:
+                self.ai_status_lbl.config(text="🔴 AI: pip install google-genai", fg=ERROR)
+                if hasattr(self, "ai_model_lbl"):
+                    self.ai_model_lbl.config(text="· Gemini client unavailable", fg=ERROR)
+                return
             self.ai_status_lbl.config(text="⚪ AI: open ⚙ to configure", fg=TEXT2)
             if hasattr(self, "ai_model_lbl"):
                 self.ai_model_lbl.config(text="· open ⚙ Settings to connect", fg=TEXT2)

@@ -16,16 +16,11 @@
 ║    Protect · Compress · Metadata                                 ║
 ╚══════════════════════════════════════════════════════════════════╝
 """
-
 import sys
 import tkinter as tk
 from ui.app import AIWorkshopApp
-
-
 def main():
     root = AIWorkshopApp()
     root.mainloop()
-
-
 if __name__ == "__main__":
     main()

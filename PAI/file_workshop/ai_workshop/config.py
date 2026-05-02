@@ -9,8 +9,13 @@ from pathlib import Path
 CONFIG_FILE = Path.home() / ".ai_workshop_config.json"
 
 DEFAULTS = {
+    "ai_provider": "nvidia",
     "gemini_api_key": "",
-    "gemini_model": "meta/llama-3.1-70b-instruct",
+    "gemini_model": "gemini-1.5-flash",
+    "nvidia_api_key": "",
+    "nvidia_model": "meta/llama-3.1-70b-instruct",
+    "huggingface_token": "",
+    "ui_scale": 1.0,
     "output_dir":     "",
     "max_chat_history": 50,
     "auto_suggest":   True,

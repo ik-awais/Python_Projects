@@ -18,6 +18,7 @@ HAS_PIL        = _try("PIL")
 HAS_PDF2IMAGE  = _try("pdf2image")
 HAS_REPORTLAB  = _try("reportlab")
 HAS_WEASYPRINT = _try("weasyprint")
+HAS_CAIROSVG   = _try("cairosvg")
 HAS_OPENPYXL   = _try("openpyxl")
 HAS_PPTX       = _try("pptx")
 HAS_FFMPEG     = bool(shutil.which("ffmpeg"))
@@ -32,12 +33,13 @@ if HAS_DOCX:
     from docx.shared import Pt, Inches
 if HAS_PIL: from PIL import Image, ImageDraw, ImageFont
 if HAS_PDF2IMAGE: from pdf2image import convert_from_path
+if HAS_CAIROSVG: import cairosvg
 if HAS_OPENPYXL: import openpyxl
 if HAS_PPTX:
     from pptx import Presentation
     from pptx.util import Inches as PInches, Pt as PPt
 
-IMAGE_EXTS = {".png",".jpg",".jpeg",".webp",".bmp",".gif",".tiff",".tif",".ico"}
+IMAGE_EXTS = {".png",".jpg",".jpeg",".webp",".bmp",".gif",".tiff",".tif",".ico",".svg"}
 AUDIO_EXTS = {".mp3",".wav",".ogg",".flac",".aac",".m4a",".wma"}
 VIDEO_EXTS = {".mp4",".avi",".mov",".mkv",".webm",".flv",".wmv",".m4v"}
 EXCEL_EXTS = {".xlsx",".xls",".xlsm",".ods"}
@@ -618,6 +620,26 @@ def html_to_pdf(src, dst):
 # ── Image ─────────────────────────────────────────────────────────────────────
 
 def image_convert(src, dst):
+    src_ext = Path(src).suffix.lower()
+    dst_ext = Path(dst).suffix.lower()
+
+    if src_ext == ".svg":
+        if dst_ext not in {".png", ".jpg", ".jpeg", ".webp", ".pdf"}:
+            raise ValueError(f"SVG can be converted to PNG/JPG/WEBP/PDF only (not {dst_ext}).")
+        if not HAS_CAIROSVG:
+            raise ImportError("SVG conversion needs: pip install cairosvg")
+        if dst_ext == ".pdf":
+            cairosvg.svg2pdf(url=src, write_to=dst)
+            return dst
+        cairosvg.svg2png(url=src, write_to=dst)
+        if dst_ext in {".jpg", ".jpeg", ".webp"}:
+            if not HAS_PIL:
+                raise ImportError("SVG→JPG/WEBP needs: pip install Pillow")
+            img = Image.open(dst).convert("RGB")
+            img.save(dst)
+            img.close()
+        return dst
+
     if not HAS_PIL: raise ImportError("pip install Pillow")
     img = Image.open(src)
     ext = Path(dst).suffix.lower()
@@ -866,6 +888,10 @@ def audio_split(src: str, segments: list, out_dir: str,
                 prefix: str = "segment", fmt: str = "") -> list:
     """Split an audio file by time — identical logic to video_split."""
     return video_split(src, segments, out_dir, prefix, fmt)
+
+def audio_merge(src_list: list, dst: str, log=None) -> str:
+    """Merge multiple audio files into one output."""
+    return video_merge(src_list, dst, log=log)
 
 # ── PDF split / merge / organise (MEMORY EFFICIENT) ──────────────────────────
 
@@ -1355,6 +1381,8 @@ def do_convert(src, out_fmt, out_dir, pages_str="", dpi=150, log=None):
     if c == "image":
         if out_fmt == "pdf":
             dst = os.path.join(out_dir, stem + ".pdf")
+            if Path(src).suffix.lower() == ".svg":
+                L("SVG→PDF"); return [image_convert(src, dst)]
             L("Image→PDF"); return [images_to_pdf([src], dst)]
         dst = os.path.join(out_dir, stem + "." + out_fmt)
         L(f"Image→{out_fmt.upper()}"); return [image_convert(src, dst)]
