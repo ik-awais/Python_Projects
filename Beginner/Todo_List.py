@@ -1,6 +1,5 @@
 # To-Do List using Basic Concepts
 # Simple To-Do List Manager
-
 def display_menu():
     # Display the main menu options
     print("\n" + "="*40)
@@ -12,21 +11,17 @@ def display_menu():
     print("4. Delete a task")
     print("5. Exit")
     print("="*40)
-
 def view_tasks(tasks):
     # Display all tasks with their status
     if not tasks:
         print("\nYour to-do list is empty!")
-        return
-    
+        return    
     print("\n" + "-"*40)
     print("YOUR TASKS:")
-    print("-"*40)
-    
+    print("-"*40)    
     for i, task in enumerate(tasks, 1):
         status = "✅" if task["completed"] else " "
-        print(f"{i}. [{status}] {task['description']}")
-    
+        print(f"{i}. [{status}] {task['description']}")    
     # Count completed vs pending tasks
     completed_count = sum(1 for task in tasks if task["completed"])
     pending_count = len(tasks) - completed_count
