@@ -1453,14 +1453,12 @@ class AIWorkshopApp(tk.Tk):
             messagebox.showwarning(label or "No PDF", "Add a PDF file to the queue first.")
             return None
         return pdfs[0]
-
     def _require_out(self):
         out = self.out_dir.get()
         if not out:
             messagebox.showwarning("No Output Folder", "Set an output folder in the sidebar first.")
             return None
         return out
-
     def _run_task(self, name: str, fn, on_done=None):
         """
         Wrapper: runs fn() in a background thread, tracks it in the op counter,
@@ -1469,7 +1467,6 @@ class AIWorkshopApp(tk.Tk):
         """
         self._op_start(name)
         self._switch_tab("log") if False else None  # don't auto-switch, just badge
-
         def _worker():
             success = True
             try:
@@ -1482,7 +1479,6 @@ class AIWorkshopApp(tk.Tk):
                 if success and on_done:
                     self.after(300, on_done)
         threading.Thread(target=_worker, daemon=True).start()
-
     def _run_convert(self):
         if not self.files: messagebox.showwarning("No Files","Add files first."); return
         out = self._require_out()
@@ -1491,7 +1487,6 @@ class AIWorkshopApp(tk.Tk):
         pages_str = self.conv_pages.get().strip()
         try: dpi = int(self.conv_dpi.get())
         except: dpi = 150
-
         def task():
             total = len(self.files); ok = 0
             for idx, src in enumerate(list(self.files)):
@@ -1503,16 +1498,13 @@ class AIWorkshopApp(tk.Tk):
                 except Exception as e: self._log(f"✖ {Path(src).name}: {e}", "err")
             self._log(f"Done — {ok}/{total} converted.", "info")
             self._status(f"Done — {ok}/{total} converted")
-
         self._run_task(f"Convert {len(self.files)} file(s) → {fmt.upper()}", task, self._open_output)
-
     def _run_upscale(self):
         images = [f for f in self.files if cat(f) == "image"]
         if not images: messagebox.showwarning("No Images","Add image files to the queue."); return
         out = self._require_out()
         if not out: return
         if not UP_PIL: messagebox.showerror("Missing","pip install Pillow"); return
-
         # resolve scale
         custom = self.upscale_custom.get().strip()
         try:
