@@ -1,0 +1,626 @@
+LECTURELENS – MASTER PROJECT SPECIFICATION
+Version: 2.0
+Status: Production Portfolio Project
+
+====================================================
+PROJECT OVERVIEW
+================
+
+Project Name:
+LectureLens
+
+Objective:
+Build a production-quality AI-powered study assistant that can ingest academic documents, create a searchable knowledge base, answer questions using Retrieval-Augmented Generation (RAG), provide verifiable citations, generate study material, and assist students with exam preparation.
+
+The final application must demonstrate practical AI engineering skills including:
+
+* Document Processing
+* Data Extraction
+* Text Chunking
+* Embeddings
+* Vector Databases
+* Retrieval-Augmented Generation (RAG)
+* Prompt Engineering
+* LLM Integration
+* Full-Stack Development
+* AI Product Design
+
+====================================================
+TECHNOLOGY STACK
+================
+
+Backend:
+
+* Python 3.12
+* Flask
+
+AI:
+
+* Google Gemini API
+* NVIDIA API
+* Sentence Transformers
+
+Embeddings:
+
+* BAAI/bge-small-en-v1.5
+
+Vector Database:
+
+* ChromaDB
+
+Metadata Database:
+
+* SQLite
+
+Frontend:
+
+* HTML
+* CSS
+* JavaScript
+
+Document Processing:
+
+* PyMuPDF
+* python-docx
+* python-pptx
+
+Deployment:
+
+* Docker
+* Linux (Ubuntu)
+
+====================================================
+ENGINEERING RULES
+=================
+
+The AI assistant working on this project MUST follow these rules:
+
+1. Never generate the entire project at once.
+
+2. Work strictly phase-by-phase.
+
+3. Never skip phases.
+
+4. Never generate files from future phases.
+
+5. Before coding:
+
+   * Analyze current project status.
+   * Review completed phases.
+   * Identify dependencies.
+   * Identify risks.
+
+6. After every phase:
+
+   * Generate testing instructions.
+   * Generate validation checklist.
+   * Generate completion report.
+
+7. Never proceed to the next phase until explicitly approved.
+
+8. If requirements are ambiguous:
+
+   * Stop.
+   * Ask questions.
+   * Wait for clarification.
+
+9. Maintain clean architecture.
+
+10. Prioritize:
+
+    * Maintainability
+    * Scalability
+    * Reliability
+    * Readability
+
+====================================================
+PROJECT STRUCTURE
+=================
+
+lecturelens/
+
+├── app.py
+├── config.py
+├── requirements.txt
+├── requirements-lock.txt
+├── .env
+
+├── routes/
+│   ├── upload_routes.py
+│   ├── chat_routes.py
+│   ├── dashboard_routes.py
+│   └── api_routes.py
+
+├── services/
+│   ├── document_parser.py
+│   ├── embedding_service.py
+│   ├── vector_store.py
+│   ├── rag_pipeline.py
+│   ├── gemini_client.py
+│   ├── nvidia_client.py
+│   ├── chat_service.py
+│   ├── flashcard_service.py
+│   ├── mcq_service.py
+│   ├── summary_service.py
+│   ├── citation_service.py
+│   ├── indexing_service.py
+│   ├── export_service.py
+│   ├── backup_service.py
+│   └── search_service.py
+
+├── database/
+│   ├── chroma/
+│   └── metadata.db
+
+├── models/
+│   ├── document.py
+│   ├── conversation.py
+│   └── subject.py
+
+├── utils/
+│   ├── chunking.py
+│   ├── hashing.py
+│   ├── validators.py
+│   ├── logger.py
+│   └── helpers.py
+
+├── queue/
+│   └── indexing_queue.py
+
+├── templates/
+│   ├── upload.html
+│   ├── chat.html
+│   ├── dashboard.html
+│   └── admin.html
+
+├── static/
+│   ├── css/
+│   ├── js/
+│   └── assets/
+
+├── uploads/
+├── exports/
+├── backups/
+├── logs/
+├── tests/
+
+└── docker/
+├── Dockerfile
+└── docker-compose.yml
+
+====================================================
+DATABASE REQUIREMENTS
+=====================
+
+SQLite must store:
+
+Documents:
+
+* document_id
+* filename
+* hash
+* subject
+* upload_time
+* page_count
+* status
+
+Conversations:
+
+* conversation_id
+* timestamp
+* question
+* answer
+
+Subjects:
+
+* subject_id
+* name
+
+Users/Sessions:
+
+* session_id
+* created_at
+
+====================================================
+CORE FEATURES
+=============
+
+1. DOCUMENT INGESTION
+
+Supported:
+
+* PDF
+* DOCX
+* PPTX
+
+Requirements:
+
+* Metadata extraction
+* Page tracking
+* Duplicate detection
+* Validation
+* Secure upload
+
+====================================================
+2. CHUNKING
+===========
+
+Requirements:
+
+* Configurable chunk size
+* Configurable overlap
+* Preserve context
+* No text loss
+
+Defaults:
+
+* Chunk Size = 500
+* Overlap = 100
+
+====================================================
+3. EMBEDDINGS
+=============
+
+Model:
+BAAI/bge-small-en-v1.5
+
+Responsibilities:
+
+* Create embeddings
+* Batch processing
+* Error handling
+
+====================================================
+4. VECTOR SEARCH
+================
+
+Database:
+ChromaDB
+
+Store:
+
+* Chunk
+* Embedding
+* Source File
+* Page Number
+* Subject
+
+====================================================
+5. HYBRID SEARCH
+================
+
+Combine:
+
+A. Vector Search
+B. Keyword Search
+
+Return:
+
+* Ranked results
+* Relevance scores
+
+====================================================
+6. RAG PIPELINE
+===============
+
+Workflow:
+
+Question
+→ Query Embedding
+→ Hybrid Search
+→ Top-K Retrieval
+→ Context Builder
+→ Prompt Construction
+→ LLM
+→ Final Answer
+
+====================================================
+7. CITATIONS
+============
+
+Every answer must include:
+
+* Source document
+* Page number
+* Referenced chunk
+
+Example:
+
+Source:
+OS_Lecture_04.pdf
+Page 17
+
+====================================================
+8. CHAT SYSTEM
+==============
+
+Features:
+
+* Chat history
+* Session persistence
+* Streaming responses
+* Markdown rendering
+
+====================================================
+9. STUDY TOOLS
+==============
+
+Flashcards:
+
+* Question
+* Answer
+
+MCQs:
+
+* Question
+* Four options
+* Correct answer
+* Explanation
+
+Summaries:
+
+* Short
+* Medium
+* Detailed
+
+====================================================
+10. SUBJECT MANAGEMENT
+======================
+
+Support:
+
+* AI
+* Operating Systems
+* DSA
+* Databases
+* Computer Networks
+
+Users can:
+
+* Upload by subject
+* Filter by subject
+* Search by subject
+
+====================================================
+11. DOCUMENT MANAGEMENT
+=======================
+
+Support:
+
+* Delete document
+* Re-index document
+* Rebuild embeddings
+* Duplicate detection via SHA256
+
+====================================================
+12. EXPORT SYSTEM
+=================
+
+Export:
+
+* Flashcards
+* MCQs
+* Summaries
+
+Formats:
+
+* PDF
+* Markdown
+
+====================================================
+13. ADMIN DASHBOARD
+===================
+
+Display:
+
+* Document count
+* Subject count
+* Query count
+* Upload history
+* System status
+
+====================================================
+14. LOGGING
+===========
+
+Requirements:
+
+Structured logging.
+
+Track:
+
+* Uploads
+* Searches
+* Errors
+* API calls
+
+====================================================
+15. SECURITY
+============
+
+Implement:
+
+* Secure filenames
+* File validation
+* Rate limiting
+* Environment variables
+* Input sanitization
+
+====================================================
+16. HEALTH MONITORING
+=====================
+
+Endpoint:
+
+/health
+
+Return:
+
+{
+"status": "healthy"
+}
+
+====================================================
+17. BACKUP SYSTEM
+=================
+
+Support:
+
+* Metadata DB backup
+* ChromaDB backup
+* Restore operations
+
+====================================================
+18. DOCKER SUPPORT
+==================
+
+Provide:
+
+Dockerfile
+
+docker-compose.yml
+
+Requirements:
+
+* One-command startup
+* Persistent volumes
+
+====================================================
+PHASE EXECUTION PLAN
+====================
+
+PHASE 0
+Planning & Architecture Review
+
+PHASE 1
+Project Skeleton
+
+PHASE 2
+Document Parsing
+
+PHASE 3
+Chunking
+
+PHASE 4
+Embeddings
+
+PHASE 5
+Vector Store
+
+PHASE 6
+Metadata Database
+
+PHASE 7
+Upload System
+
+PHASE 8
+Hybrid Search
+
+PHASE 9
+RAG Pipeline
+
+PHASE 10
+Gemini Integration
+
+PHASE 11
+NVIDIA Integration
+
+PHASE 12
+Chat Service
+
+PHASE 13
+Chat UI
+
+PHASE 14
+Citations
+
+PHASE 15
+Subject Management
+
+PHASE 16
+Flashcards
+
+PHASE 17
+MCQ Generator
+
+PHASE 18
+Summaries
+
+PHASE 19
+Document Management
+
+PHASE 20
+Conversation History
+
+PHASE 21
+Dashboard
+
+PHASE 22
+Export System
+
+PHASE 23
+Logging
+
+PHASE 24
+Rate Limiting
+
+PHASE 25
+Health Checks
+
+PHASE 26
+Backup System
+
+PHASE 27
+Dockerization
+
+PHASE 28
+Testing
+
+PHASE 29
+Final Polish
+
+====================================================
+REQUIRED OUTPUT FORMAT FOR EVERY PHASE
+======================================
+
+Before Coding:
+
+1. Goal
+2. Dependencies
+3. Risks
+4. Design Decisions
+
+After Coding:
+
+1. Files Created
+2. Files Modified
+3. Testing Instructions
+4. Validation Checklist
+5. Completion Report
+6. Ready For Next Phase (YES/NO)
+
+Never move to the next phase without explicit approval.
+
+====================================================
+SUCCESS CRITERIA
+================
+
+A successful LectureLens implementation must:
+
+* Parse PDF, PPTX, DOCX files
+* Create embeddings
+* Store vectors in ChromaDB
+* Perform hybrid retrieval
+* Generate grounded answers
+* Show citations
+* Support flashcards
+* Support MCQs
+* Support summaries
+* Maintain conversation history
+* Manage subjects
+* Prevent duplicates
+* Export study material
+* Run in Docker
+* Be portfolio-ready
+* Demonstrate real-world AI engineering practices
+

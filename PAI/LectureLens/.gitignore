@@ -1,0 +1,46 @@
+# ---------------------------------------------------
+# LectureLens Specific 
+# ---------------------------------------------------
+
+# Databases & Vector Stores (Heavy files & Privacy)
+database/chroma/
+database/*.db
+database/*.sqlite3
+
+# User Uploads (Privacy)
+uploads/*
+# (Optional) Keep the empty uploads directory in git:
+!uploads/.gitkeep
+
+# Logs
+logs/*.log
+logs/*.log.*
+
+# Test Documents (Uncomment if you don't want test docs in GitHub)
+# test_docs/
+
+# ---------------------------------------------------
+# Python Standard
+# ---------------------------------------------------
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual Environments
+.venv/
+venv/
+env/
+
+# Environment Variables (API Keys, etc.)
+.env
+.env.local
+
+# ---------------------------------------------------
+# IDEs and OS
+# ---------------------------------------------------
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
