@@ -26,8 +26,10 @@ class Config:
     UPLOAD_FOLDER: Path
     LOG_FILE: Path
 
-    # Upload
+    # Upload & Document Processing
     MAX_FILE_SIZE_MB: int
+    CHUNK_SIZE: int
+    OVERLAP: int
     ALLOWED_EXTENSIONS: tuple = ('.pdf', '.docx', '.pptx')
 
     @classmethod
@@ -46,6 +48,11 @@ class Config:
         # Parse optional with defaults
         debug = os.getenv('FLASK_DEBUG', 'False').lower() == 'true'
         max_size_mb = int(os.getenv('MAX_FILE_SIZE_MB', '50'))
+        
+        # New Chunking defaults
+        chunk_size = int(os.getenv('CHUNK_SIZE', '500'))
+        overlap = int(os.getenv('OVERLAP', '100'))
+        
         chroma_path = Path(os.getenv('CHROMA_PATH', './database/chroma'))
         db_path = Path(os.getenv('DATABASE_PATH', './database/metadata.db'))
         upload_folder = Path(os.getenv('UPLOAD_FOLDER', './uploads'))
@@ -68,4 +75,6 @@ class Config:
             UPLOAD_FOLDER=upload_folder,
             LOG_FILE=log_file,
             MAX_FILE_SIZE_MB=max_size_mb,
+            CHUNK_SIZE=chunk_size,
+            OVERLAP=overlap,
         )

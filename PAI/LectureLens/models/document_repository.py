@@ -9,14 +9,14 @@ class DocumentRepository:
         self.db = db_manager
 
     def create(self, filename: str, file_hash: str, subject: str,
-               page_count: Optional[int] = None, status: str = "pending") -> str:
-        """Insert a new document, return document_id."""
-        doc_id = str(uuid.uuid4())
+           page_count: Optional[int] = None, status: str = "pending",
+           document_id: Optional[str] = None) -> str:
+        doc_id = document_id if document_id else str(uuid.uuid4())
         now = datetime.utcnow().isoformat() + "Z"
         self.db.execute(
             """INSERT INTO documents
-               (document_id, filename, hash, subject, upload_time, page_count, status)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (document_id, filename, hash, subject, upload_time, page_count, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?)""",
             (doc_id, filename, file_hash, subject, now, page_count, status)
         )
         return doc_id
