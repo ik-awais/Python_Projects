@@ -70,6 +70,17 @@ def create_app():
     fts_repo = FTSRepository(db_manager)
     search_service = SearchService(vector_store, fts_repo)
     app.config['SEARCH_SERVICE'] = search_service
+    
+    from services.llm_client import GeminiClient, NVIDIAClient
+    from services.rag_pipeline import RAGPipeline
+
+    gemini_client = GeminiClient(config.GEMINI_API_KEY) if config.GEMINI_API_KEY else None
+    nvidia_client = NVIDIAClient(config.NVIDIA_API_KEY) if config.NVIDIA_API_KEY else None
+    rag_pipeline = RAGPipeline(search_service, gemini_client, nvidia_client)
+    app.config['RAG_PIPELINE'] = rag_pipeline
+
+    from routes.chat_routes import chat_bp
+    app.register_blueprint(chat_bp)
 
     from routes.search_routes import search_bp
     app.register_blueprint(search_bp)

@@ -1,5 +1,6 @@
 """Full-text search using SQLite FTS5."""
 import logging
+import re
 from models.database import DatabaseManager
 
 logger = logging.getLogger(__name__)
@@ -36,18 +37,34 @@ class FTSRepository:
         for row in rows:
             self.db.execute("DELETE FROM chunks_fts WHERE chunk_id = ?", (row['chunk_id'],))
 
+
     def keyword_search(self, query: str, limit: int = 10) -> list:
         """
         Perform keyword search using FTS5 MATCH.
-        Returns list of dicts with keys: chunk_id, text, document_id, page_num, score.
+        - Removes punctuation that FTS5 cannot handle (?, !, ., etc.)
+        - Escapes double quotes.
+        - Uses direct formatting for LIMIT (no placeholder).
         """
-        results = self.db.fetch_all(
-            """SELECT chunk_id, text, document_id, page_num,
-                      rank as score
-               FROM chunks_fts
-               WHERE chunks_fts MATCH ?
-               ORDER BY rank
-               LIMIT ?""",
-            (query, limit)
-        )
-        return results
+        # Remove characters that break FTS5 MATCH syntax
+        # Keep only letters, numbers, spaces, and underscores
+        safe_query = re.sub(r'[^\w\s]', ' ', query)
+        # Collapse multiple spaces
+        safe_query = ' '.join(safe_query.split())
+        if not safe_query:
+            return []
+
+        # Escape double quotes (still needed for exact phrases)
+        safe_query = safe_query.replace('"', '""')
+
+        # Build SQL with literal limit (no placeholder)
+        sql = f"""
+            SELECT chunk_id, text, document_id, page_num,
+                rank as score
+            FROM chunks_fts
+            WHERE chunks_fts MATCH '{safe_query}'
+            ORDER BY rank
+            LIMIT {int(limit)}
+        """
+        # fetch_all expects a tuple of parameters – but we have none now
+        # So we call fetch_all with an empty tuple
+        return self.db.fetch_all(sql, ())

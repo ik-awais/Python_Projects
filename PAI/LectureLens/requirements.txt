@@ -6,3 +6,5 @@ python-pptx==0.6.23
 sentence-transformers==2.2.2
 torch==2.2.1  # CPU version; can be adjusted, but ensure compatibility
 chromadb==0.4.22
+google-generativeai>=0.3.0
+requests>=2.31.0
