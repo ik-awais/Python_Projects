@@ -3,16 +3,14 @@ import logging
 from typing import List, Dict, Any, Optional
 
 from services.search_service import SearchService
-from services.llm_client import GeminiClient, NVIDIAClient
+from services.llm_client import NVIDIAClient
 
 logger = logging.getLogger(__name__)
 
 class RAGPipeline:
     def __init__(self, search_service: SearchService,
-                 gemini_client: Optional[GeminiClient] = None,
                  nvidia_client: Optional[NVIDIAClient] = None):
         self.search_service = search_service
-        self.gemini = gemini_client
         self.nvidia = nvidia_client
 
     def _build_context(self, chunks: List[Dict]) -> str:
@@ -64,11 +62,9 @@ Question: {question}
 
 Answer with citations (source filename and page number):"""
 
-        # 3. Try LLM calls with fallback
+        # 3. Try NVIDIA LLM
         answer_text = None
-        if self.gemini:
-            answer_text = self.gemini.generate(prompt)
-        if not answer_text and self.nvidia:
+        if self.nvidia:
             answer_text = self.nvidia.generate(prompt)
         if not answer_text:
             # Fallback to retrieval-only response
@@ -80,5 +76,5 @@ Answer with citations (source filename and page number):"""
         return {
             "answer": answer_text,
             "citations": citations,
-            "retrieved_chunks": chunks  # optional, for debugging
+            "retrieved_chunks": chunks
         }

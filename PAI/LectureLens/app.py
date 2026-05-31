@@ -10,9 +10,6 @@ from models.database import DatabaseManager
 from routes.upload_routes import upload_bp
 from services.vector_store import VectorStore
 from task_queue.indexing_queue import indexing_queue
-from models.fts_repository import FTSRepository
-from services.search_service import SearchService
-
 
 def create_app():
     """Create and configure Flask app."""
@@ -49,45 +46,40 @@ def create_app():
     logger.info("Default subjects seeded: %s", [s['name'] for s in subjects])
     app.config['DB_MANAGER'] = db_manager
 
-    # ---------------------------------------------------------
-    # NEW COMPONENTS: Vector Store, Routes, and Queue
-    # ---------------------------------------------------------
-    
-    # Create vector store (persistent)
-    # Ensure CHROMA_PATH is defined in your config.py
+    # Vector store
+    from services.vector_store import VectorStore
     vector_store = VectorStore(config.CHROMA_PATH, embedding_dimension=384)
     app.config['VECTOR_STORE'] = vector_store
 
-    # Register blueprint
-    app.register_blueprint(upload_bp)
-
-    # Start background queue worker
-    indexing_queue.start()
-
-    # Add cleanup on shutdown
-    atexit.register(indexing_queue.stop)
-    
+    # FTS and Search Service
+    from models.fts_repository import FTSRepository
+    from services.search_service import SearchService
     fts_repo = FTSRepository(db_manager)
     search_service = SearchService(vector_store, fts_repo)
     app.config['SEARCH_SERVICE'] = search_service
-    
-    from services.llm_client import GeminiClient, NVIDIAClient
-    from services.rag_pipeline import RAGPipeline
 
-    gemini_client = GeminiClient(config.GEMINI_API_KEY) if config.GEMINI_API_KEY else None
-    nvidia_client = NVIDIAClient(config.NVIDIA_API_KEY) if config.NVIDIA_API_KEY else None
-    rag_pipeline = RAGPipeline(search_service, gemini_client, nvidia_client)
+    # LLM Clients (NVIDIA only)
+    from services.llm_client import NVIDIAClient
+    from services.rag_pipeline import RAGPipeline
+    nvidia_client = NVIDIAClient(config.NVIDIA_API_KEY)
+    rag_pipeline = RAGPipeline(search_service, nvidia_client=nvidia_client)
     app.config['RAG_PIPELINE'] = rag_pipeline
 
+    # Register blueprints
+    from routes.upload_routes import upload_bp
+    from routes.search_routes import search_bp
     from routes.chat_routes import chat_bp
+    app.register_blueprint(upload_bp)
+    app.register_blueprint(search_bp)
     app.register_blueprint(chat_bp)
 
-    from routes.search_routes import search_bp
-    app.register_blueprint(search_bp)
-    
-    # ---------------------------------------------------------
+    # Start background queue worker
+    from task_queue.indexing_queue import indexing_queue
+    indexing_queue.start()
+    import atexit
+    atexit.register(indexing_queue.stop)
 
-    # Register health check route 
+    # Health and root routes
     @app.route('/health', methods=['GET'])
     def health():
         return {"status": "healthy"}, 200
@@ -97,7 +89,6 @@ def create_app():
         return {"message": "LectureLens API Running"}, 200
 
     logger.info("Application ready")
-
     return app
 
 if __name__ == '__main__':

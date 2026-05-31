@@ -1,36 +1,24 @@
-"""LLM clients for Gemini and NVIDIA (fallback)."""
+"""LLM client for NVIDIA API (primary)."""
 import logging
 import requests
-import google.generativeai as genai
 from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-class GeminiClient:
-    def __init__(self, api_key: str):
-        genai.configure(api_key=api_key)
-        self.model = genai.GenerativeModel('gemini-1.5-flash')
-    
-    def generate(self, prompt: str, timeout: int = 30) -> Optional[str]:
-        try:
-            response = self.model.generate_content(prompt, request_options={'timeout': timeout})
-            return response.text
-        except Exception as e:
-            logger.error("Gemini API error: %s", e)
-            return None
-
 class NVIDIAClient:
     def __init__(self, api_key: str):
         self.api_key = api_key
-        self.url = "https://integrate.api.nvidia.com/v1/chat/completions"  # example endpoint; adjust as needed
-    
+        self.url = "https://integrate.api.nvidia.com/v1/chat/completions"
+        # Use a reliable model from your list (you confirmed it works)
+        self.model = "meta/llama-3.3-70b-instruct"
+
     def generate(self, prompt: str, timeout: int = 30) -> Optional[str]:
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json"
         }
         payload = {
-            "model": "meta/llama3-70b-instruct",  # adjust to available model
+            "model": self.model,
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0.2,
             "max_tokens": 500
