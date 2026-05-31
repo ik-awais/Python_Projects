@@ -19,29 +19,36 @@ class SearchService:
         self.keyword_top_k = keyword_top_k
 
     def hybrid_search(self, query: str, subject: Optional[str] = None,
-                      top_k: int = 5) -> List[Dict[str, Any]]:
+                    top_k: int = 5) -> List[Dict[str, Any]]:
         """
         Combine vector and keyword search using weighted scoring.
-        Returns merged results sorted by combined score.
+        If subject is None or empty, search across all collections.
         """
-        # 1. Vector search
         query_embedding = embedding_service.embed_text(query)
-        vector_results = self.vector_store.search(
-            subject=subject if subject else "General",
-            query_embedding=query_embedding,
-            top_k=self.vector_top_k
-        )
+
+        # --- VECTOR SEARCH ---
+        if subject and subject != "General":
+            # Subject-specific search
+            vector_results = self.vector_store.search(subject, query_embedding, top_k=self.vector_top_k)
+        else:
+            # Cross-subject search
+            vector_results = self.vector_store.search_all(query_embedding,
+                                                        top_k_per_collection=self.vector_top_k,
+                                                        final_top_k=self.vector_top_k)
+
         # Normalize distances to similarity (0-1) using 1/(1+distance)
         for res in vector_results:
             res['vector_score'] = 1.0 / (1.0 + res['distance'])
 
-        # 2. Keyword search (FTS)
+        # --- KEYWORD SEARCH (FTS) ---
+        # Keyword search is subject‑specific (FTS table stores subject? Actually it stores document_id, not subject.
+        # To keep it simple, we still run FTS across all chunks; it will return results from any subject.
+        # This is acceptable because cross‑subject keyword search is fine.
         keyword_results = self.fts_repo.keyword_search(query, limit=self.keyword_top_k)
         for res in keyword_results:
-            # rank is smaller = better; convert to similarity (higher = better)
             res['keyword_score'] = 1.0 / (1.0 + res['score'])
 
-        # 3. Merge results by chunk_id
+        # --- MERGE AND SCORE (as before) ---
         merged = {}
         for res in vector_results:
             chunk_id = res['id']
@@ -68,11 +75,9 @@ class SearchService:
                     'keyword_score': res['keyword_score']
                 }
 
-        # 4. Compute combined score
         for chunk_id, item in merged.items():
             item['combined_score'] = (self.vector_weight * item['vector_score'] +
-                                      self.keyword_weight * item['keyword_score'])
+                                    self.keyword_weight * item['keyword_score'])
 
-        # 5. Sort by combined score descending
         sorted_items = sorted(merged.values(), key=lambda x: x['combined_score'], reverse=True)
         return sorted_items[:top_k]
