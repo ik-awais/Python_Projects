@@ -30,9 +30,6 @@ __pycache__/
 venv/
 env/
 
-.env
-.env.local
-
 # ---------------------------------------------------
 # IDEs and OS
 # ---------------------------------------------------
@@ -40,3 +37,7 @@ env/
 .idea/
 .DS_Store
 Thumbs.db
+# Environment Variables (API Keys, etc.)
+.env
+.env.local
+.env.example
