@@ -72,6 +72,8 @@ def create_app():
     app.register_blueprint(upload_bp)
     app.register_blueprint(search_bp)
     app.register_blueprint(chat_bp)
+    from routes.subjects_routes import subjects_bp
+    app.register_blueprint(subjects_bp)
 
     # Start background queue worker
     from task_queue.indexing_queue import indexing_queue
@@ -86,7 +88,8 @@ def create_app():
 
     @app.route('/', methods=['GET'])
     def index():
-        return {"message": "LectureLens API Running"}, 200
+        from flask import render_template
+        return render_template('chat.html')
 
     logger.info("Application ready")
     return app
