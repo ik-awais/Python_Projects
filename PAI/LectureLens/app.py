@@ -6,10 +6,9 @@ from config import Config
 from utils.logger import setup_logging
 from models.database import DatabaseManager
 
-# Import new components
+# Import new components (no indexing_queue here)
 from routes.upload_routes import upload_bp
 from services.vector_store import VectorStore
-from task_queue.indexing_queue import indexing_queue
 
 def create_app():
     """Create and configure Flask app."""
@@ -57,6 +56,7 @@ def create_app():
     fts_repo = FTSRepository(db_manager)
     search_service = SearchService(vector_store, fts_repo)
     app.config['SEARCH_SERVICE'] = search_service
+    app.config['FTS_REPO'] = fts_repo  # exposed for admin reindex
 
     # LLM Clients (NVIDIA only)
     from services.llm_client import NVIDIAClient
@@ -69,16 +69,20 @@ def create_app():
     from routes.upload_routes import upload_bp
     from routes.search_routes import search_bp
     from routes.chat_routes import chat_bp
+    from routes.subjects_routes import subjects_bp
+    from routes.admin_routes import admin_bp  # Phase 15
+
     app.register_blueprint(upload_bp)
     app.register_blueprint(search_bp)
     app.register_blueprint(chat_bp)
-    from routes.subjects_routes import subjects_bp
     app.register_blueprint(subjects_bp)
+    app.register_blueprint(admin_bp)  # Phase 15 – mounts at /admin/*
 
-    # Start background queue worker
-    from task_queue.indexing_queue import indexing_queue
-    indexing_queue.start()
-    import atexit
+    # Initialize indexing queue with configured workers
+    from task_queue.indexing_queue import init_queue, get_queue
+    init_queue(max_workers=config.INDEXING_WORKERS)
+    indexing_queue = get_queue()
+    app.config['INDEXING_QUEUE'] = indexing_queue
     atexit.register(indexing_queue.stop)
 
     # Health and root routes
