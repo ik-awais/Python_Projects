@@ -22,6 +22,8 @@ class Config:
     OVERLAP: int
     BATCH_SIZE: int          # for embedding batching
     INDEXING_WORKERS: int    # number of background threads
+    WATCH_FOLDER_ENABLED: bool
+    WATCH_FOLDER_INTERVAL_SECONDS: int
     ALLOWED_EXTENSIONS: tuple = ('.pdf', '.docx', '.pptx')
 
     @classmethod
@@ -41,7 +43,7 @@ class Config:
 
         gemini_key = os.getenv('GEMINI_API_KEY')
         debug = os.getenv('FLASK_DEBUG', 'False').lower() == 'true'
-        max_size_mb = int(os.getenv('MAX_FILE_SIZE_MB', '500'))   # increased to 500 MB
+        max_size_mb = int(os.getenv('MAX_FILE_SIZE_MB', '2048'))   # 2GB for bulk uploads
         chroma_path = Path(os.getenv('CHROMA_PATH', './database/chroma'))
         db_path = Path(os.getenv('DATABASE_PATH', './database/metadata.db'))
         upload_folder = Path(os.getenv('UPLOAD_FOLDER', './uploads'))
@@ -49,7 +51,9 @@ class Config:
         chunk_size = int(os.getenv('CHUNK_SIZE', '500'))
         overlap = int(os.getenv('OVERLAP', '100'))
         batch_size = int(os.getenv('BATCH_SIZE', '32'))
-        indexing_workers = int(os.getenv('INDEXING_WORKERS', '2'))
+        indexing_workers = int(os.getenv('INDEXING_WORKERS', '4'))   # increase to 4
+        watch_enabled = os.getenv('WATCH_FOLDER_ENABLED', 'True').lower() == 'true'
+        watch_interval = int(os.getenv('WATCH_FOLDER_INTERVAL_SECONDS', '30'))
 
         # Ensure directories exist
         chroma_path.mkdir(parents=True, exist_ok=True)
@@ -72,4 +76,6 @@ class Config:
             OVERLAP=overlap,
             BATCH_SIZE=batch_size,
             INDEXING_WORKERS=indexing_workers,
+            WATCH_FOLDER_ENABLED=watch_enabled,
+            WATCH_FOLDER_INTERVAL_SECONDS=watch_interval,
         )

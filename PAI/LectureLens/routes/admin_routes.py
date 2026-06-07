@@ -87,83 +87,46 @@ def get_stats():
 # ── Health ────────────────────────────────────────────────────────────────────
 
 @admin_bp.route('/health', methods=['GET'])
-@require_admin
-def get_health():
-    """Return detailed system health for all sub-services."""
-    services = {}
-
-    # SQLite
-    try:
-        doc_repo  = current_app.config['DOCUMENT_REPO']
-        all_docs  = doc_repo.get_all()
-        services['sqlite'] = {
-            'status':         'healthy',
-            'document_count': len(all_docs),
+def health():
+    queue = current_app.config.get('INDEXING_QUEUE')
+    if queue is None:
+        queue_status = {
+            "status": "uninitialized",
+            "workers": 0,
+            "active_futures": 0,
+            "pending_tasks": 0
         }
-    except Exception as e:
-        services['sqlite'] = {'status': 'unhealthy', 'error': str(e)}
-
-    # ChromaDB
-    try:
-        vector_store = current_app.config['VECTOR_STORE']
-        collections  = vector_store.client.list_collections()
-        col_data     = []
-        total_vectors = 0
-        for col in collections:
-            try:
-                count = col.count()
-                total_vectors += count
-                # Derive subject from collection name (lecturelens_<slug>)
-                name    = col.name
-                subject = name.replace('lecturelens_', '').replace('_', ' ').title() \
-                          if name.startswith('lecturelens_') else name
-                col_data.append({'name': name, 'count': count, 'subject': subject})
-            except Exception as ce:
-                col_data.append({'name': col.name, 'count': 0, 'subject': '', 'error': str(ce)})
-
-        services['chroma'] = {
-            'status':           'healthy',
-            'collection_count': len(collections),
-            'total_vectors':    total_vectors,
-            'collections':      sorted(col_data, key=lambda c: c['name']),
+    else:
+        stats = queue.get_stats()
+        queue_status = {
+            "status": "healthy" if queue.is_healthy() else "unhealthy",
+            "workers": stats["workers"],
+            "active_futures": stats["active_futures"],
+            "pending_tasks": stats["pending_tasks"],
+            "total_submitted": stats["total_submitted"],
+            "shutdown": stats["shutdown"]
         }
-    except Exception as e:
-        services['chroma'] = {'status': 'unhealthy', 'error': str(e), 'collections': []}
 
-    # Embedding model
-    try:
-        from services.embedding_service import EmbeddingService
-        emb    = EmbeddingService()
-        config = current_app.config.get('APP_CONFIG')
-        services['embedding_model'] = {
-            'status':     'healthy',
-            'model_name': getattr(config, 'EMBEDDING_MODEL_NAME', 'BAAI/bge-small-en-v1.5'),
-            'dimension':  getattr(emb, 'embedding_dimension', 384),
-        }
-    except Exception as e:
-        services['embedding_model'] = {'status': 'unhealthy', 'error': str(e)}
+    chroma_healthy = bool(current_app.config.get('VECTOR_STORE'))
+    db_healthy = bool(current_app.config.get('DB_MANAGER'))
 
-    # Indexing queue
-    try:
-        from task_queue.indexing_queue import indexing_queue
-        alive = indexing_queue.worker_thread is not None and indexing_queue.worker_thread.is_alive()
-        services['queue'] = {
-            'status':     'healthy' if alive else 'degraded',
-            'workers':    1,
-            'queue_size': indexing_queue.queue.qsize(),
-        }
-    except Exception as e:
-        services['queue'] = {'status': 'unhealthy', 'error': str(e)}
+    # Flat fields for legacy frontend compatibility
+    flat = {
+        "queue_workers": queue_status["workers"],
+        "queue_active": queue_status["active_futures"],
+        "queue_pending": queue_status["pending_tasks"],
+        "queue_status": queue_status["status"],
+        "chroma_status": "healthy" if chroma_healthy else "unhealthy",
+        "db_status": "healthy" if db_healthy else "unhealthy",
+    }
 
-    overall = 'healthy'
-    for svc in services.values():
-        if svc.get('status') == 'unhealthy':
-            overall = 'unhealthy'
-            break
-        if svc.get('status') == 'degraded':
-            overall = 'degraded'
-
-    return jsonify({'status': overall, 'services': services}), 200
+    return jsonify({
+        "indexing_queue": queue_status,
+        "chromadb": "healthy" if chroma_healthy else "unhealthy",
+        "database": "healthy" if db_healthy else "unhealthy",
+        "status": "healthy" if queue_status["status"] == "healthy" and chroma_healthy and db_healthy else "degraded",
+        **flat   # add flat fields at top level
+    })
 
 
 # ── Subjects analytics ────────────────────────────────────────────────────────
@@ -413,3 +376,54 @@ def reindex_document(document_id):
     except Exception as e:
         logger.exception("Unexpected error reindexing document %s", document_id)
         return jsonify({'error': str(e)}), 500
+
+@admin_bp.route('/upload', methods=['POST'])
+@require_admin
+def upload_files():
+    """Accept multiple files and subject, save to uploads/<subject>/ and enqueue indexing."""
+    subject = request.form.get('subject')
+    if not subject:
+        return jsonify({'error': 'Subject is required'}), 400
+    if 'files' not in request.files:
+        return jsonify({'error': 'No files provided'}), 400
+
+    files = request.files.getlist('files')
+    if not files:
+        return jsonify({'error': 'No files selected'}), 400
+
+    upload_folder = current_app.config['APP_CONFIG'].UPLOAD_FOLDER
+    subject_folder = upload_folder / subject
+    subject_folder.mkdir(parents=True, exist_ok=True)
+
+    indexing_queue = current_app.config['INDEXING_QUEUE']
+    db_repo = current_app.config['DOCUMENT_REPO']
+    vector_store = current_app.config['VECTOR_STORE']
+    db_manager = current_app.config['DB_MANAGER']
+    chunk_size = current_app.config.get('CHUNK_SIZE', 500)
+    overlap = current_app.config.get('OVERLAP', 100)
+
+    job_ids = []
+    for file in files:
+        if file.filename == '':
+            continue
+        # Secure filename
+        safe_name = secure_filename(file.filename)
+        file_path = subject_folder / safe_name
+        file.save(file_path)
+        # Enqueue indexing
+        indexing_queue.enqueue(
+            _index_file_task,
+            file_path, safe_name, subject,
+            db_repo, vector_store, db_manager, chunk_size, overlap
+        )
+        job_ids.append(safe_name)
+
+    return jsonify({'message': f'{len(job_ids)} files queued', 'files': job_ids}), 202
+
+def _index_file_task(file_path, original_filename, subject, db_repo, vector_store, db_manager, chunk_size, overlap):
+    from services.indexing_service import IndexingService
+    try:
+        indexing_service = IndexingService(db_repo, vector_store, db_manager, chunk_size, overlap)
+        indexing_service.index_document(file_path, original_filename, subject)
+    except Exception as e:
+        logger.exception("Indexing failed for %s: %s", file_path, e)

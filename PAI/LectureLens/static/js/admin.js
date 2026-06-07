@@ -152,9 +152,6 @@ document.querySelectorAll('.nav-item').forEach(el => {
 // ════════════════════════════════════════════════
 
 async function loadOverview() {
-    removeSkeleton('#statsGrid .stat-card');
-    removeSkeleton('#statusGrid .status-item');
-
     try {
         const [stats, health] = await Promise.all([api.getStats(), api.getHealth()]);
         renderStats(stats);
@@ -163,10 +160,6 @@ async function loadOverview() {
     } catch (err) {
         toast('Failed to load overview: ' + err.message, 'error');
     }
-}
-
-function removeSkeleton(selector) {
-    document.querySelectorAll(selector).forEach(el => el.classList.add('skeleton'));
 }
 
 function renderStats(stats) {
@@ -179,41 +172,31 @@ function renderStats(stats) {
 }
 
 function renderStatusPanel(health) {
-    const services = health.services || {};
+    // Use flat fields returned by /admin/health
+    const queueStatus = health.queue_status || 'unknown';
+    const queueWorkers = health.queue_workers || 0;
+    const chromaStatus = health.chroma_status || health.chromadb || 'unknown';
+    const dbStatus = health.db_status || health.database || 'unknown';
 
     function applyStatus(dotId, detailId, status, detail) {
         const dot = document.getElementById(dotId);
         const det = document.getElementById(detailId);
         if (dot) {
             dot.className = 'status-dot';
-            if (status === 'healthy')   dot.classList.add('green');
+            if (status === 'healthy') dot.classList.add('green');
             else if (status === 'degraded') dot.classList.add('yellow');
-            else                         dot.classList.add('red');
+            else dot.classList.add('red');
         }
         if (det) det.textContent = detail || status;
     }
 
-    const sqlite = services.sqlite || {};
-    applyStatus('dotSqlite', 'detailSqlite', sqlite.status || 'unknown',
-        sqlite.document_count !== undefined
-            ? `${formatNumber(sqlite.document_count)} documents`
-            : sqlite.status || 'Unknown');
-
-    const chroma = services.chroma || {};
-    applyStatus('dotChroma', 'detailChroma', chroma.status || 'unknown',
-        chroma.collection_count !== undefined
-            ? `${chroma.collection_count} collections`
-            : chroma.status || 'Unknown');
-
-    const model = services.embedding_model || {};
-    applyStatus('dotModel', 'detailModel', model.status || 'unknown',
-        model.model_name || model.status || 'Unknown');
-
-    const queue = services.queue || {};
-    applyStatus('dotQueue', 'detailQueue', queue.status || 'unknown',
-        queue.workers !== undefined
-            ? `${queue.workers} worker${queue.workers !== 1 ? 's' : ''}`
-            : queue.status || 'Unknown');
+    applyStatus('dotSqlite', 'detailSqlite', dbStatus,
+        dbStatus === 'healthy' ? 'Metadata DB ready' : dbStatus);
+    applyStatus('dotChroma', 'detailChroma', chromaStatus,
+        chromaStatus === 'healthy' ? 'Vector store ready' : chromaStatus);
+    applyStatus('dotModel', 'detailModel', 'healthy', 'BGE-small (384-dim)');
+    applyStatus('dotQueue', 'detailQueue', queueStatus,
+        queueStatus === 'healthy' ? `${queueWorkers} worker(s)` : queueStatus);
 
     document.querySelectorAll('#statusGrid .status-item').forEach(el => el.classList.remove('skeleton'));
 }
@@ -246,8 +229,6 @@ function populateSubjectFilter(docs) {
     const select = document.getElementById('docSubjectFilter');
     const current = select.value;
     const subjects = [...new Set(docs.map(d => d.subject).filter(Boolean))].sort();
-
-    // Keep "All Subjects" option, rebuild the rest
     while (select.options.length > 1) select.remove(1);
     subjects.forEach(s => {
         const opt = document.createElement('option');
@@ -269,7 +250,6 @@ function applyDocFilters() {
         if (status  && (doc.status || '').toLowerCase() !== status.toLowerCase()) return false;
         return true;
     });
-
     docsState.page = 1;
     renderDocsPage();
 }
@@ -279,17 +259,14 @@ function renderDocsPage() {
     const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
     const safePage   = Math.min(page, totalPages);
     docsState.page   = safePage;
-
     const start = (safePage - 1) * PAGE_SIZE;
     const slice = filtered.slice(start, start + PAGE_SIZE);
-
     const tbody  = document.getElementById('docsTableBody');
     const empty  = document.getElementById('docsEmpty');
     const loading = document.getElementById('docsLoading');
 
     loading.style.display  = 'none';
     tbody.innerHTML        = '';
-
     document.getElementById('docCount').textContent = formatNumber(filtered.length);
 
     if (slice.length === 0) {
@@ -299,11 +276,9 @@ function renderDocsPage() {
         slice.forEach(doc => tbody.appendChild(buildDocRow(doc)));
     }
 
-    // Pagination
     const pageInfo = document.getElementById('docsPageInfo');
     const prevBtn  = document.getElementById('docsPrev');
     const nextBtn  = document.getElementById('docsNext');
-
     pageInfo.textContent = `Page ${safePage} of ${totalPages}`;
     prevBtn.disabled = safePage <= 1;
     nextBtn.disabled = safePage >= totalPages;
@@ -312,7 +287,6 @@ function renderDocsPage() {
 function buildDocRow(doc) {
     const tr = document.createElement('tr');
     tr.dataset.docId = doc.document_id;
-
     tr.innerHTML = `
         <td class="filename" title="${escapeHtml(doc.filename || '')}">${escapeHtml(doc.filename || '–')}</td>
         <td>${escapeHtml(doc.subject || '–')}</td>
@@ -338,24 +312,20 @@ function showDocsLoading(show) {
     document.getElementById('docsEmpty').style.display    = 'none';
 }
 
-// Table action delegation
 document.getElementById('docsTableBody').addEventListener('click', async e => {
     const btn = e.target.closest('[data-action]');
     if (!btn) return;
     const action = btn.dataset.action;
     const id     = btn.dataset.id;
-
     if (action === 'view')    { await openDetailModal(id); return; }
     if (action === 'delete')  { openDeleteModal(id, btn.dataset.filename); return; }
     if (action === 'reindex') { await triggerReindex(id, btn); return; }
 });
 
-// Filters
 document.getElementById('docSearch').addEventListener('input', debounce(applyDocFilters, 200));
 document.getElementById('docSubjectFilter').addEventListener('change', applyDocFilters);
 document.getElementById('docStatusFilter').addEventListener('change', applyDocFilters);
 
-// Pagination
 document.getElementById('docsPrev').addEventListener('click', () => {
     if (docsState.page > 1) { docsState.page--; renderDocsPage(); }
 });
@@ -363,7 +333,6 @@ document.getElementById('docsNext').addEventListener('click', () => {
     const total = Math.ceil(docsState.filtered.length / PAGE_SIZE);
     if (docsState.page < total) { docsState.page++; renderDocsPage(); }
 });
-
 document.getElementById('docsRefresh').addEventListener('click', () => loadDocuments());
 
 // ════════════════════════════════════════════════
@@ -388,7 +357,6 @@ function closeDeleteModal() {
 }
 
 document.getElementById('deleteCancelBtn').addEventListener('click', closeDeleteModal);
-
 document.getElementById('deleteModal').addEventListener('click', e => {
     if (e.target === document.getElementById('deleteModal')) closeDeleteModal();
 });
@@ -396,12 +364,10 @@ document.getElementById('deleteModal').addEventListener('click', e => {
 document.getElementById('deleteConfirmBtn').addEventListener('click', async () => {
     if (!pendingDeleteId) return;
     const id = pendingDeleteId;
-
     const confirmBtn = document.getElementById('deleteConfirmBtn');
     confirmBtn.disabled = true;
     document.getElementById('deleteConfirmText').style.display = 'none';
     document.getElementById('deleteSpinner').style.display     = '';
-
     try {
         await api.deleteDocument(id);
         toast('Document deleted successfully.', 'success');
@@ -425,11 +391,9 @@ document.getElementById('deleteConfirmBtn').addEventListener('click', async () =
 async function triggerReindex(id, btn) {
     btn.disabled    = true;
     btn.textContent = '…';
-
     try {
         await api.reindexDocument(id);
         toast('Reindex queued successfully.', 'success');
-        // Update local status to indexing
         const doc = docsState.all.find(d => d.document_id === id);
         if (doc) doc.status = 'indexing';
         applyDocFilters();
@@ -448,7 +412,6 @@ async function openDetailModal(id) {
     document.getElementById('detailContent').innerHTML =
         '<div class="table-loading"><div class="spinner"></div></div>';
     document.getElementById('detailModal').classList.add('open');
-
     try {
         const doc = await api.getDocument(id);
         renderDetailContent(doc);
@@ -460,7 +423,6 @@ async function openDetailModal(id) {
 
 function renderDetailContent(doc) {
     document.getElementById('detailModalTitle').textContent = doc.filename || 'Document';
-
     const fields = [
         { key: 'Document ID',    val: doc.document_id,  mono: true,  full: true },
         { key: 'Filename',       val: doc.filename },
@@ -471,7 +433,6 @@ function renderDetailContent(doc) {
         { key: 'Created',        val: formatDate(doc.created_at || doc.upload_time), full: false },
         { key: 'Updated',        val: formatDate(doc.updated_at) },
     ];
-
     const html = `<div class="detail-grid">` + fields.map(f => {
         if (!f.val && f.val !== 0) return '';
         const cls = `detail-field${f.full ? ' full' : ''}`;
@@ -483,14 +444,12 @@ function renderDetailContent(doc) {
             <div>${valHtml}</div>
         </div>`;
     }).join('') + `</div>`;
-
     document.getElementById('detailContent').innerHTML = html;
 }
 
 document.getElementById('detailCloseBtn').addEventListener('click', () => {
     document.getElementById('detailModal').classList.remove('open');
 });
-
 document.getElementById('detailModal').addEventListener('click', e => {
     if (e.target === document.getElementById('detailModal'))
         document.getElementById('detailModal').classList.remove('open');
@@ -504,17 +463,14 @@ async function loadSubjects() {
     const grid    = document.getElementById('subjectsGrid');
     const empty   = document.getElementById('subjectsEmpty');
     const loading = document.getElementById('subjectsLoading');
-
     empty.style.display   = 'none';
     loading.style.display = 'flex';
     grid.innerHTML        = '';
     grid.appendChild(loading);
-
     try {
         const data = await api.getSubjects();
         const subjects = data.subjects || [];
         loading.style.display = 'none';
-
         if (subjects.length === 0) {
             empty.style.display = 'flex';
         } else {
@@ -562,63 +518,50 @@ document.getElementById('subjectsRefresh').addEventListener('click', loadSubject
 // ════════════════════════════════════════════════
 
 async function loadHealth() {
-    document.getElementById('healthLoading').style.display  = 'flex';
-    document.getElementById('chromaLoading').style.display  = 'flex';
-    document.getElementById('healthDetail').innerHTML       = '<div class="table-loading" id="healthLoading"><div class="spinner"></div></div>';
-    document.getElementById('chromaCollections').innerHTML  = '<div class="table-loading" id="chromaLoading"><div class="spinner"></div></div>';
-
+    const healthDiv = document.getElementById('healthDetail');
+    const chromaDiv = document.getElementById('chromaCollections');
+    healthDiv.innerHTML = '<div class="table-loading"><div class="spinner"></div></div>';
+    chromaDiv.innerHTML = '<div class="table-loading"><div class="spinner"></div></div>';
     try {
-        const health = await api.getHealth();
-        renderHealthDetail(health);
-        renderChromaCollections(health);
+        const [health, stats] = await Promise.all([api.getHealth(), api.getStats()]);
+        renderHealthDetail(health, stats);
+        renderChromaCollections();
         setLastUpdated();
     } catch (err) {
-        document.getElementById('healthDetail').innerHTML      = `<div class="empty-state"><p>${escapeHtml(err.message)}</p></div>`;
-        document.getElementById('chromaCollections').innerHTML = `<div class="empty-state"><p>Could not load ChromaDB data.</p></div>`;
+        healthDiv.innerHTML = `<div class="empty-state"><p>${escapeHtml(err.message)}</p></div>`;
+        chromaDiv.innerHTML = `<div class="empty-state"><p>Could not load ChromaDB data.</p></div>`;
         toast('Failed to load health: ' + err.message, 'error');
     }
 }
 
-function renderHealthDetail(health) {
-    const services = health.services || {};
-
+function renderHealthDetail(health, stats) {
     const rows = [
         {
-            label:  'SQLite',
-            sub:    'Metadata & FTS5 database',
-            status: services.sqlite?.status || 'unknown',
-            detail: services.sqlite?.document_count !== undefined
-                ? `${formatNumber(services.sqlite.document_count)} documents`
-                : services.sqlite?.status || '–',
+            label: 'SQLite',
+            sub: 'Metadata & FTS5 database',
+            status: health.db_status || health.database || 'unknown',
+            detail: `${stats.total_documents || 0} documents, ${stats.total_subjects || 0} subjects`,
         },
         {
-            label:  'ChromaDB',
-            sub:    'Vector store',
-            status: services.chroma?.status || 'unknown',
-            detail: services.chroma?.collection_count !== undefined
-                ? `${services.chroma.collection_count} collections, ${formatNumber(services.chroma.total_vectors || 0)} vectors`
-                : services.chroma?.status || '–',
+            label: 'ChromaDB',
+            sub: 'Vector store',
+            status: health.chroma_status || health.chromadb || 'unknown',
+            detail: `${stats.total_vectors || 0} vectors`,
         },
         {
-            label:  'Embedding Model',
-            sub:    services.embedding_model?.model_name || 'BAAI/bge-small-en-v1.5',
-            status: services.embedding_model?.status || 'unknown',
-            detail: services.embedding_model?.dimension
-                ? `${services.embedding_model.dimension}-dim`
-                : services.embedding_model?.status || '–',
+            label: 'Embedding Model',
+            sub: 'BAAI/bge-small-en-v1.5',
+            status: 'healthy',
+            detail: '384 dimensions, CPU',
         },
         {
-            label:  'Indexing Queue',
-            sub:    'Background workers',
-            status: services.queue?.status || 'unknown',
-            detail: services.queue?.workers !== undefined
-                ? `${services.queue.workers} worker${services.queue.workers !== 1 ? 's' : ''} · queue size: ${services.queue.queue_size ?? 0}`
-                : services.queue?.status || '–',
+            label: 'Indexing Queue',
+            sub: 'Background workers',
+            status: health.queue_status || 'unknown',
+            detail: `${health.queue_workers || 0} worker(s) · ${health.queue_pending || 0} pending`,
         },
     ];
-
     const colorMap = { healthy: 'green', degraded: 'yellow', unhealthy: 'red', unknown: 'grey' };
-
     const html = `<div class="health-rows">` + rows.map(r => {
         const cls = colorMap[r.status] || 'grey';
         return `<div class="health-row">
@@ -632,37 +575,34 @@ function renderHealthDetail(health) {
             <div class="health-row-right">${escapeHtml(r.detail)}</div>
         </div>`;
     }).join('') + `</div>`;
-
     document.getElementById('healthDetail').innerHTML = html;
 }
 
-function renderChromaCollections(health) {
-    const collections = (health.services?.chroma?.collections) || [];
-
-    if (collections.length === 0) {
+async function renderChromaCollections() {
+    try {
+        const subjectsData = await api.getSubjects();
+        const subjects = subjectsData.subjects || [];
+        if (subjects.length === 0) {
+            document.getElementById('chromaCollections').innerHTML =
+                '<div class="empty-state"><p>No subjects found.</p></div>';
+            return;
+        }
+        const rows = subjects.map(s => `
+            <tr>
+                <td><span class="collection-name">${escapeHtml(s.name)}</span></td>
+                <td><span class="vector-count">${formatNumber(s.vector_count)}</span></td>
+                <td>${formatNumber(s.document_count)} docs, ${formatNumber(s.chunk_count)} chunks</td>
+            </tr>
+        `).join('');
+        document.getElementById('chromaCollections').innerHTML = `
+            <table class="chroma-table">
+                <thead><tr><th>Subject</th><th>Vectors</th><th>Documents/Chunks</th></tr></thead>
+                <tbody>${rows}</tbody>
+            </table>`;
+    } catch (err) {
         document.getElementById('chromaCollections').innerHTML =
-            '<div class="empty-state"><p>No ChromaDB collections found.</p></div>';
-        return;
+            `<div class="empty-state"><p>Could not load subject data: ${escapeHtml(err.message)}</p></div>`;
     }
-
-    const rows = collections.map(c => `
-        <tr>
-            <td><span class="collection-name">${escapeHtml(c.name)}</span></td>
-            <td><span class="vector-count">${formatNumber(c.count)}</span></td>
-            <td>${escapeHtml(c.subject || '–')}</td>
-        </tr>`).join('');
-
-    document.getElementById('chromaCollections').innerHTML = `
-        <table class="chroma-table">
-            <thead>
-                <tr>
-                    <th>Collection</th>
-                    <th>Vectors</th>
-                    <th>Subject</th>
-                </tr>
-            </thead>
-            <tbody>${rows}</tbody>
-        </table>`;
 }
 
 document.getElementById('healthRefresh').addEventListener('click', loadHealth);

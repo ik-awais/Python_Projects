@@ -22,7 +22,22 @@ class IndexingQueue:
     def stop(self, wait: bool = True):
         self.executor.shutdown(wait=wait)
         logger.info("Indexing queue stopped")
+    def is_healthy(self) -> bool:
+        """Return True if executor is not shut down."""
+        return not self.executor._shutdown  # type: ignore
 
+    def get_stats(self) -> dict:
+        """Return current queue statistics."""
+        # Count futures that are still pending (not done)
+        pending = sum(1 for f in self._futures if not f.done())
+        running = sum(1 for f in self._futures if f.running())
+        return {
+            "workers": self.executor._max_workers,  # type: ignore
+            "active_futures": running,
+            "pending_tasks": pending,
+            "total_submitted": len(self._futures),
+            "shutdown": self.executor._shutdown      # type: ignore
+        }
 # Global instance (initially None)
 _indexing_queue_instance = None
 

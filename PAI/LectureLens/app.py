@@ -70,13 +70,13 @@ def create_app():
     from routes.search_routes import search_bp
     from routes.chat_routes import chat_bp
     from routes.subjects_routes import subjects_bp
-    from routes.admin_routes import admin_bp  # Phase 15
+    from routes.admin_routes import admin_bp
 
     app.register_blueprint(upload_bp)
     app.register_blueprint(search_bp)
     app.register_blueprint(chat_bp)
     app.register_blueprint(subjects_bp)
-    app.register_blueprint(admin_bp)  # Phase 15 – mounts at /admin/*
+    app.register_blueprint(admin_bp)
 
     # Initialize indexing queue with configured workers
     from task_queue.indexing_queue import init_queue, get_queue
@@ -84,6 +84,23 @@ def create_app():
     indexing_queue = get_queue()
     app.config['INDEXING_QUEUE'] = indexing_queue
     atexit.register(indexing_queue.stop)
+
+    # Initialize folder watcher if enabled
+    if config.WATCH_FOLDER_ENABLED:
+        from task_queue.folder_watcher import FolderWatcher
+        watcher = FolderWatcher(
+            base_upload_folder=config.UPLOAD_FOLDER,
+            indexing_queue=indexing_queue,
+            document_repo=app.config['DOCUMENT_REPO'],
+            vector_store=app.config['VECTOR_STORE'],
+            db_manager=app.config['DB_MANAGER'],
+            chunk_size=config.CHUNK_SIZE,
+            overlap=config.OVERLAP,
+            scan_interval=config.WATCH_FOLDER_INTERVAL_SECONDS
+        )
+        watcher.start()
+        atexit.register(watcher.stop)
+        logger.info("Folder watcher started (interval=%ds)", config.WATCH_FOLDER_INTERVAL_SECONDS)
 
     # Health and root routes
     @app.route('/health', methods=['GET'])
