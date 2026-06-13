@@ -1,27 +1,27 @@
-<!-- PAI — Personal Artificial Intelligence | ik-awais | Central AI Laboratory -->
+<!-- PAI — Personal Artificial Intelligence | Central AI Laboratory -->
 
 <div align="center">
 
-<img src="https://user-images.githubusercontent.com/73097560/115834477-dbab4500-a447-11eb-908a-139a6edaec5c.gif" width="100%"/>
+<img src="https://capsule-render.vercel.app/api?type=waving&color=0:03001e,100:4a0e8f&height=200&section=header&text=PAI&fontSize=70&fontColor=00c8ff&animation=fadeIn&fontAlignY=35&desc=Personal%20Artificial%20Intelligence&descAlignY=55&descSize=18" width="100%"/>
 
-<img src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=700&size=30&duration=3000&pause=1500&color=00C8FF&center=true&vCenter=true&width=820&height=65&lines=PAI+%E2%80%94+Personal+Artificial+Intelligence;Central+AI+Laboratory+%7C+ik-awais;Research+%7C+Experiments+%7C+Production" alt="PAI" />
+<img src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=700&size=30&duration=3000&pause=1500&color=00C8FF&center=true&vCenter=true&width=820&height=65&lines=PAI+%E2%80%94+Personal+Artificial+Intelligence;Central+AI+Laboratory;Research+%7C+Experiments+%7C+Production" alt="PAI" />
 
 <img src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=400&size=15&duration=3500&pause=1200&color=9d6fff&center=true&vCenter=true&width=820&height=36&lines=Agentic+AI+%7C+RAG+%7C+LLM+%7C+Computer+Vision+%7C+NLP;Multi-Agent+Systems+%7C+Research+%7C+Prototypes;Building+AI+one+experiment+at+a+time" alt="Subtitle" />
 
 <br/>
 
-[![LinkedIn](https://img.shields.io/badge/LinkedIn-0a66c2?style=for-the-badge&logo=linkedin&logoColor=white)](https://www.linkedin.com/in/muhammad-awais-ai-engineer/)
-[![Portfolio](https://img.shields.io/badge/Portfolio-03001e?style=for-the-badge&logo=githubpages&logoColor=00c8ff)](https://ik-awais.github.io)
-[![Gmail](https://img.shields.io/badge/Gmail-D14836?style=for-the-badge&logo=gmail&logoColor=white)](mailto:mawaisqq@gmail.com)
-[![Work Mail](https://img.shields.io/badge/Work_Mail-4a0e8f?style=for-the-badge&logo=maildotru&logoColor=white)](mailto:m.awais@aigenmat.com)
+[![LinkedIn](https://img.shields.io/badge/LinkedIn-0a66c2?style=for-the-badge&logo=linkedin&logoColor=white)](#)
+[![Portfolio](https://img.shields.io/badge/Portfolio-03001e?style=for-the-badge&logo=githubpages&logoColor=00c8ff)](#)
+[![Gmail](https://img.shields.io/badge/Gmail-D14836?style=for-the-badge&logo=gmail&logoColor=white)](#)
+[![Work Mail](https://img.shields.io/badge/Work_Mail-4a0e8f?style=for-the-badge&logo=maildotru&logoColor=white)](#)
 
 <br/>
 
-![Views](https://komarev.com/ghpvc/?username=ik-awais&style=flat-square&color=00C8FF&label=PAI+Views&abbreviated=true)
+![Views](https://komarev.com/ghpvc/?username=YOUR_USERNAME&style=flat-square&color=00C8FF&label=PAI+Views&abbreviated=true)
 
-> *"The measure of intelligence is the ability to change."* — Albert Einstein
+> *"Your tagline / quote here."*
 
-<img src="https://user-images.githubusercontent.com/73097560/115834477-dbab4500-a447-11eb-908a-139a6edaec5c.gif" width="100%"/>
+<img src="https://capsule-render.vercel.app/api?type=rect&color=0:03001e,100:4a0e8f&height=3&width=100%25" width="100%"/>
 
 </div>
 
@@ -32,9 +32,9 @@
 ```yaml
 name:        PAI — Personal Artificial Intelligence
 type:        AI Laboratory · Umbrella Repository
-maintainer:  Muhammad Awais (ik-awais)
+maintainer:  YOUR_NAME
 scope:       All AI projects, experiments, research, and prototypes
-founded:     2026
+founded:     YEAR
 status:      Active · Continuously Expanding
 
 domains:
@@ -45,12 +45,12 @@ domains:
   - AI Utilities & Infrastructure
   - Research Implementations
 
-portfolio:   https://ik-awais.github.io
-company:     https://aigenmat.com
+portfolio:   LINK
+company:     LINK
 ```
 
 <div align="center">
-<img src="https://user-images.githubusercontent.com/73097560/115834477-dbab4500-a447-11eb-908a-139a6edaec5c.gif" width="100%"/>
+<img src="https://capsule-render.vercel.app/api?type=rect&color=0:03001e,100:4a0e8f&height=3&width=100%25" width="100%"/>
 </div>
 
 ---
@@ -61,30 +61,32 @@ company:     https://aigenmat.com
 
 | 🔭 Vision | 🎯 Mission |
 |:----------|:----------|
-| To build a self-contained AI laboratory that spans every domain of modern AI engineering — from raw research to production-grade systems. | To implement, experiment, and ship AI systems across Agentic, LLM, Vision, and NLP domains while maintaining a living record of the AI learning journey. |
+| [One sentence describing the long-term ambition of the lab — the kind of AI engineer/organization this repo represents.] | [One sentence describing what this repo is actively doing — building, experimenting, documenting.] |
 
 </div>
 
 <div align="center">
-<img src="https://user-images.githubusercontent.com/73097560/115834477-dbab4500-a447-11eb-908a-139a6edaec5c.gif" width="100%"/>
+<img src="https://capsule-render.vercel.app/api?type=rect&color=0:03001e,100:4a0e8f&height=3&width=100%25" width="100%"/>
 </div>
 
 ---
 
 ## 📁 Repository Architecture
 
+> NOTE: Replace broken `user-images.githubusercontent.com` GIF links with capsule-render dividers (as used above) — they are reliable, animated, and GitHub-compatible.
+
 ```
 PAI/
-├── MediScan/                  →  Medical image analysis · Computer Vision
-├── [PROJECT_2]/               →  [one-line description]
-├── [PROJECT_3]/               →  [one-line description]
+├── Project-Folder-1/          →  One-line description of project's nature
+├── Project-Folder-2/          →  One-line description of project's nature
+├── Project-Folder-3/          →  One-line description of project's nature
 └── README.md
 ```
 
 > Each subdirectory is a standalone project with its own `README.md`, dependencies, and documentation.
 
 <div align="center">
-<img src="https://user-images.githubusercontent.com/73097560/115834477-dbab4500-a447-11eb-908a-139a6edaec5c.gif" width="100%"/>
+<img src="https://capsule-render.vercel.app/api?type=rect&color=0:03001e,100:4a0e8f&height=3&width=100%25" width="100%"/>
 </div>
 
 ---
@@ -111,7 +113,7 @@ PAI/
 </div>
 
 <div align="center">
-<img src="https://user-images.githubusercontent.com/73097560/115834477-dbab4500-a447-11eb-908a-139a6edaec5c.gif" width="100%"/>
+<img src="https://capsule-render.vercel.app/api?type=rect&color=0:03001e,100:4a0e8f&height=3&width=100%25" width="100%"/>
 </div>
 
 ---
@@ -122,13 +124,15 @@ PAI/
 
 | Project | Domain | Status | Stack | Progress | Docs |
 |:--------|:-------|:-------|:------|:---------|:-----|
-| [**MediScan**](https://github.com/ik-awais/Python_Projects/tree/main/PAI/Mediscan) | Computer Vision | ![Active](https://img.shields.io/badge/Active-00ff88?style=flat-square) | `PyTorch` `HuggingFace` `OpenCV` `FastAPI` | `██████████ 100%` | [📄 README](https://github.com/ik-awais/Python_Projects/tree/main/PAI/Mediscan) |
-| [**PROJECT_NAME**](LINK) | `DOMAIN` | ![WIP](https://img.shields.io/badge/In_Progress-ffaa00?style=flat-square) | `Tech1` `Tech2` | `████████░░  80%` | [📄](LINK) |
+| [**PROJECT_NAME**](LINK) | `Nature of project (e.g. Computer Vision prototype)` | ![Active](https://img.shields.io/badge/Active-00ff88?style=flat-square) | `Tech1` `Tech2` | `██████████ 100%` | [📄](LINK) |
+| [**PROJECT_NAME**](LINK) | `Nature of project` | ![WIP](https://img.shields.io/badge/In_Progress-ffaa00?style=flat-square) | `Tech1` `Tech2` | `████████░░  80%` | [📄](LINK) |
 
 </div>
 
+> Add a new row per project. No restructuring needed as the list grows — for 20+ projects, split into collapsible `<details>` blocks per category (see "AI Project Categories" below).
+
 <div align="center">
-<img src="https://user-images.githubusercontent.com/73097560/115834477-dbab4500-a447-11eb-908a-139a6edaec5c.gif" width="100%"/>
+<img src="https://capsule-render.vercel.app/api?type=rect&color=0:03001e,100:4a0e8f&height=3&width=100%25" width="100%"/>
 </div>
 
 ---
@@ -139,13 +143,12 @@ PAI/
 
 | Project | Domain | Stack | ETA |
 |:--------|:-------|:------|:----|
-| **PROJECT_NAME** | `DOMAIN` | `Tech1` `Tech2` | Q3 2026 |
-| **PROJECT_NAME** | `DOMAIN` | `Tech1` `Tech2` | Q4 2026 |
+| **PROJECT_NAME** | `Nature of project` | `Tech1` `Tech2` | QX 20XX |
 
 </div>
 
 <div align="center">
-<img src="https://user-images.githubusercontent.com/73097560/115834477-dbab4500-a447-11eb-908a-139a6edaec5c.gif" width="100%"/>
+<img src="https://capsule-render.vercel.app/api?type=rect&color=0:03001e,100:4a0e8f&height=3&width=100%25" width="100%"/>
 </div>
 
 ---
@@ -156,15 +159,15 @@ PAI/
 
 | Phase | Goal | Status |
 |:------|:-----|:-------|
-| Phase 1 | Single-agent tool-use systems | ![Active](https://img.shields.io/badge/Active-00ff88?style=flat-square) |
-| Phase 2 | Multi-agent orchestration frameworks | ![Planned](https://img.shields.io/badge/Planned-4a0e8f?style=flat-square) |
-| Phase 3 | Autonomous agentic pipelines with memory & planning | ![Planned](https://img.shields.io/badge/Planned-4a0e8f?style=flat-square) |
-| Phase 4 | Production-grade multi-agent infrastructure | ![Planned](https://img.shields.io/badge/Planned-4a0e8f?style=flat-square) |
+| Phase 1 | [Roadmap goal] | ![Active](https://img.shields.io/badge/Active-00ff88?style=flat-square) |
+| Phase 2 | [Roadmap goal] | ![Planned](https://img.shields.io/badge/Planned-4a0e8f?style=flat-square) |
+| Phase 3 | [Roadmap goal] | ![Planned](https://img.shields.io/badge/Planned-4a0e8f?style=flat-square) |
+| Phase 4 | [Roadmap goal] | ![Planned](https://img.shields.io/badge/Planned-4a0e8f?style=flat-square) |
 
 </div>
 
 <div align="center">
-<img src="https://user-images.githubusercontent.com/73097560/115834477-dbab4500-a447-11eb-908a-139a6edaec5c.gif" width="100%"/>
+<img src="https://capsule-render.vercel.app/api?type=rect&color=0:03001e,100:4a0e8f&height=3&width=100%25" width="100%"/>
 </div>
 
 ---
@@ -177,7 +180,7 @@ PAI/
 
 | Paper | Domain | Year | Status |
 |:------|:-------|:-----|:-------|
-| Add paper implementations here | — | — | — |
+| — | — | — | — |
 
 </details>
 
@@ -187,7 +190,7 @@ PAI/
 
 | Experiment | Domain | Hypothesis | Status |
 |:-----------|:-------|:-----------|:-------|
-| Add experiments here | — | — | — |
+| — | — | — | — |
 
 </details>
 
@@ -197,12 +200,14 @@ PAI/
 
 | Experiment | Outcome | Learnings |
 |:-----------|:--------|:----------|
-| Add archived experiments here | — | — |
+| — | — | — |
 
 </details>
 
+> Use `<details>` collapsibles for every research category — keeps the README short at any scale (5, 20, or 50+ entries).
+
 <div align="center">
-<img src="https://user-images.githubusercontent.com/73097560/115834477-dbab4500-a447-11eb-908a-139a6edaec5c.gif" width="100%"/>
+<img src="https://capsule-render.vercel.app/api?type=rect&color=0:03001e,100:4a0e8f&height=3&width=100%25" width="100%"/>
 </div>
 
 ---
@@ -256,7 +261,7 @@ PAI/
 </div>
 
 <div align="center">
-<img src="https://user-images.githubusercontent.com/73097560/115834477-dbab4500-a447-11eb-908a-139a6edaec5c.gif" width="100%"/>
+<img src="https://capsule-render.vercel.app/api?type=rect&color=0:03001e,100:4a0e8f&height=3&width=100%25" width="100%"/>
 </div>
 
 ---
@@ -267,15 +272,13 @@ PAI/
 
 | Period | Milestone | Technologies |
 |:-------|:----------|:-------------|
-| 2025 Q4 | Started PAI · First CV project (MediScan) | `PyTorch` `HuggingFace` `OpenCV` |
-| 2026 Q1 | Expanded into RAG & LLM systems | `LangChain` `FAISS` `FastAPI` |
-| 2026 Q2 | Agentic AI exploration begins | `LangGraph` `LlamaIndex` |
-| 2026 Q3+ | Multi-Agent systems · Production infra | `LangGraph` `Docker` `AWS` |
+| 20XX QX | [Milestone description] | `Tech1` `Tech2` |
+| 20XX QX | [Milestone description] | `Tech1` `Tech2` |
 
 </div>
 
 <div align="center">
-<img src="https://user-images.githubusercontent.com/73097560/115834477-dbab4500-a447-11eb-908a-139a6edaec5c.gif" width="100%"/>
+<img src="https://capsule-render.vercel.app/api?type=rect&color=0:03001e,100:4a0e8f&height=3&width=100%25" width="100%"/>
 </div>
 
 ---
@@ -284,32 +287,32 @@ PAI/
 
 <div align="center">
 
-### [MediScan](https://github.com/ik-awais/Python_Projects/tree/main/PAI/Mediscan)
+### [PROJECT_NAME](LINK)
 
 ![Active](https://img.shields.io/badge/Status-Active-00ff88?style=flat-square)
 ![Advanced](https://img.shields.io/badge/Complexity-Advanced-ff4466?style=flat-square)
-![Computer Vision](https://img.shields.io/badge/Domain-Computer_Vision-00c8ff?style=flat-square)
-
-| Attribute | Detail |
-|:----------|:-------|
-| **Type** | Production |
-| **Domain** | Medical Image Analysis · Computer Vision |
-| **Stack** | `PyTorch` · `HuggingFace` · `OpenCV` · `FastAPI` |
-| **Progress** | `██████████ 100%` |
-| **Docs** | [View README →](https://github.com/ik-awais/Python_Projects/tree/main/PAI/Mediscan) |
-
----
-
-### [YOUR_NEXT_FLAGSHIP](LINK)
-
-![WIP](https://img.shields.io/badge/Status-In_Progress-ffaa00?style=flat-square)
-![Advanced](https://img.shields.io/badge/Complexity-Advanced-ff4466?style=flat-square)
-![DOMAIN](https://img.shields.io/badge/Domain-DOMAIN-00c8ff?style=flat-square)
+![Domain](https://img.shields.io/badge/Domain-DOMAIN_NAME-00c8ff?style=flat-square)
 
 | Attribute | Detail |
 |:----------|:-------|
 | **Type** | `Prototype` / `Research` / `Production` |
-| **Domain** | DOMAIN |
+| **Domain** | [Nature of project, e.g. "AI-driven document intelligence"] |
+| **Stack** | `Tech1` · `Tech2` · `Tech3` |
+| **Progress** | `██████████ 100%` |
+| **Docs** | [View README →](LINK) |
+
+---
+
+### [PROJECT_NAME](LINK)
+
+![WIP](https://img.shields.io/badge/Status-In_Progress-ffaa00?style=flat-square)
+![Advanced](https://img.shields.io/badge/Complexity-Advanced-ff4466?style=flat-square)
+![Domain](https://img.shields.io/badge/Domain-DOMAIN_NAME-00c8ff?style=flat-square)
+
+| Attribute | Detail |
+|:----------|:-------|
+| **Type** | `Prototype` / `Research` / `Production` |
+| **Domain** | [Nature of project] |
 | **Stack** | `Tech1` · `Tech2` · `Tech3` |
 | **Progress** | `████░░░░░░  40%` |
 | **Docs** | [View README →](LINK) |
@@ -317,7 +320,7 @@ PAI/
 </div>
 
 <div align="center">
-<img src="https://user-images.githubusercontent.com/73097560/115834477-dbab4500-a447-11eb-908a-139a6edaec5c.gif" width="100%"/>
+<img src="https://capsule-render.vercel.app/api?type=rect&color=0:03001e,100:4a0e8f&height=3&width=100%25" width="100%"/>
 </div>
 
 ---
@@ -328,18 +331,20 @@ PAI/
 
 | Category | Projects | Sub-domains |
 |:---------|:---------|:------------|
-| Computer Vision | 1 | Medical Imaging, Detection, Classification |
-| Agentic AI | 0 | Multi-Agent, Tool Use, Planning |
-| RAG Systems | 0 | Document QA, Semantic Search, Embeddings |
-| LLM Engineering | 0 | Fine-tuning, Inference, Evaluation |
-| NLP | 0 | Sentiment, NER, Summarization |
-| AI Utilities | 0 | Data Pipelines, Loaders, Helpers |
-| Research | 0 | Paper Implementations, Experiments |
+| Computer Vision | N | [sub-domain examples] |
+| Agentic AI | N | [sub-domain examples] |
+| RAG Systems | N | [sub-domain examples] |
+| LLM Engineering | N | [sub-domain examples] |
+| NLP | N | [sub-domain examples] |
+| AI Utilities | N | [sub-domain examples] |
+| Research | N | [sub-domain examples] |
 
 </div>
 
+> At scale (20+ projects), convert each row into a collapsible `<details>` section listing individual projects within that category, to keep the top-level table compact.
+
 <div align="center">
-<img src="https://user-images.githubusercontent.com/73097560/115834477-dbab4500-a447-11eb-908a-139a6edaec5c.gif" width="100%"/>
+<img src="https://capsule-render.vercel.app/api?type=rect&color=0:03001e,100:4a0e8f&height=3&width=100%25" width="100%"/>
 </div>
 
 ---
@@ -351,20 +356,20 @@ PAI/
 <table>
   <tr>
     <td>
-      <img src="https://github-readme-stats-two-jade-68.vercel.app/api?username=ik-awais&show_icons=true&theme=tokyonight&hide_border=true&bg_color=03001e&title_color=00c8ff&icon_color=9d6fff&text_color=e8e8f0&rank_icon=github" height="180"/>
+      <img src="https://github-readme-stats-two-jade-68.vercel.app/api?username=YOUR_USERNAME&show_icons=true&theme=tokyonight&hide_border=true&bg_color=03001e&title_color=00c8ff&icon_color=9d6fff&text_color=e8e8f0&rank_icon=github" height="180"/>
     </td>
     <td>
-      <img src="https://github-readme-stats-two-jade-68.vercel.app/api/top-langs/?username=ik-awais&layout=compact&theme=tokyonight&hide_border=true&bg_color=03001e&title_color=00c8ff&text_color=e8e8f0&langs_count=8&card_width=400" height="180"/>
+      <img src="https://github-readme-stats-two-jade-68.vercel.app/api/top-langs/?username=YOUR_USERNAME&layout=compact&theme=tokyonight&hide_border=true&bg_color=03001e&title_color=00c8ff&text_color=e8e8f0&langs_count=8&card_width=400" height="180"/>
     </td>
   </tr>
   <tr>
     <td colspan="2" align="center">
-      <img src="https://streak-stats.demolab.com/?user=ik-awais&theme=tokyonight&hide_border=true&background=03001e&stroke=4a0e8f&ring=00c8ff&fire=00c8ff&currStreakLabel=00c8ff&sideLabels=e8e8f0&dates=9d6fff" width="100%"/>
+      <img src="https://streak-stats.demolab.com/?user=YOUR_USERNAME&theme=tokyonight&hide_border=true&background=03001e&stroke=4a0e8f&ring=00c8ff&fire=00c8ff&currStreakLabel=00c8ff&sideLabels=e8e8f0&dates=9d6fff" width="100%"/>
     </td>
   </tr>
   <tr>
     <td colspan="2" align="center">
-      <img src="https://github-readme-activity-graph.vercel.app/graph?username=ik-awais&bg_color=03001e&color=00c8ff&line=4a0e8f&point=9d6fff&area=true&hide_border=true" width="100%"/>
+      <img src="https://github-readme-activity-graph.vercel.app/graph?username=YOUR_USERNAME&bg_color=03001e&color=00c8ff&line=4a0e8f&point=9d6fff&area=true&hide_border=true" width="100%"/>
     </td>
   </tr>
 </table>
@@ -372,7 +377,7 @@ PAI/
 </div>
 
 <div align="center">
-<img src="https://user-images.githubusercontent.com/73097560/115834477-dbab4500-a447-11eb-908a-139a6edaec5c.gif" width="100%"/>
+<img src="https://capsule-render.vercel.app/api?type=rect&color=0:03001e,100:4a0e8f&height=3&width=100%25" width="100%"/>
 </div>
 
 ---
@@ -395,7 +400,7 @@ flowchart LR
 ```
 
 <div align="center">
-<img src="https://user-images.githubusercontent.com/73097560/115834477-dbab4500-a447-11eb-908a-139a6edaec5c.gif" width="100%"/>
+<img src="https://capsule-render.vercel.app/api?type=rect&color=0:03001e,100:4a0e8f&height=3&width=100%25" width="100%"/>
 </div>
 
 ---
@@ -406,9 +411,9 @@ flowchart LR
 <summary><b>🤖 Agentic Infrastructure</b></summary>
 <br>
 
-- Production-grade multi-agent orchestration
-- LangGraph-based stateful agent pipelines
-- Agent memory & tool-use systems
+- [Plan item]
+- [Plan item]
+- [Plan item]
 
 </details>
 
@@ -416,9 +421,8 @@ flowchart LR
 <summary><b>🧠 LLM Fine-tuning Lab</b></summary>
 <br>
 
-- Domain-specific model fine-tuning
-- PEFT / LoRA experiments
-- Evaluation harnesses & benchmarks
+- [Plan item]
+- [Plan item]
 
 </details>
 
@@ -426,9 +430,8 @@ flowchart LR
 <summary><b>🔗 RAG Infrastructure</b></summary>
 <br>
 
-- Hybrid search systems (dense + sparse)
-- Multi-modal RAG pipelines
-- Production document intelligence APIs
+- [Plan item]
+- [Plan item]
 
 </details>
 
@@ -436,14 +439,13 @@ flowchart LR
 <summary><b>👁️ Computer Vision Expansion</b></summary>
 <br>
 
-- Real-time video analysis systems
-- Multi-modal vision-language models
-- Edge deployment experiments
+- [Plan item]
+- [Plan item]
 
 </details>
 
 <div align="center">
-<img src="https://user-images.githubusercontent.com/73097560/115834477-dbab4500-a447-11eb-908a-139a6edaec5c.gif" width="100%"/>
+<img src="https://capsule-render.vercel.app/api?type=rect&color=0:03001e,100:4a0e8f&height=3&width=100%25" width="100%"/>
 </div>
 
 ---
@@ -458,7 +460,7 @@ PAI is a personal laboratory. External contributions are welcome for research im
 4. Open a Pull Request with a clear description
 
 <div align="center">
-<img src="https://user-images.githubusercontent.com/73097560/115834477-dbab4500-a447-11eb-908a-139a6edaec5c.gif" width="100%"/>
+<img src="https://capsule-render.vercel.app/api?type=rect&color=0:03001e,100:4a0e8f&height=3&width=100%25" width="100%"/>
 </div>
 
 ---
@@ -467,21 +469,21 @@ PAI is a personal laboratory. External contributions are welcome for research im
 
 <div align="center">
 
-[![LinkedIn](https://img.shields.io/badge/LinkedIn-0a66c2?style=for-the-badge&logo=linkedin&logoColor=white)](https://www.linkedin.com/in/muhammad-awais-ai-engineer/)
-[![Portfolio](https://img.shields.io/badge/Portfolio-03001e?style=for-the-badge&logo=githubpages&logoColor=00c8ff)](https://ik-awais.github.io)
-[![Upwork](https://img.shields.io/badge/Upwork-6FDA44?style=for-the-badge&logo=upwork&logoColor=white)](https://www.upwork.com/freelancers/~018a2d0e2f88ac4838)
-[![Gmail](https://img.shields.io/badge/Gmail-D14836?style=for-the-badge&logo=gmail&logoColor=white)](mailto:mawaisqq@gmail.com)
-[![Work Mail](https://img.shields.io/badge/Work_Mail-4a0e8f?style=for-the-badge&logo=maildotru&logoColor=white)](mailto:m.awais@aigenmat.com)
-[![Instagram](https://img.shields.io/badge/Instagram-E4405F?style=for-the-badge&logo=instagram&logoColor=white)](https://instagram.com/ik_.awais)
+[![LinkedIn](https://img.shields.io/badge/LinkedIn-0a66c2?style=for-the-badge&logo=linkedin&logoColor=white)](#)
+[![Portfolio](https://img.shields.io/badge/Portfolio-03001e?style=for-the-badge&logo=githubpages&logoColor=00c8ff)](#)
+[![Upwork](https://img.shields.io/badge/Upwork-6FDA44?style=for-the-badge&logo=upwork&logoColor=white)](#)
+[![Gmail](https://img.shields.io/badge/Gmail-D14836?style=for-the-badge&logo=gmail&logoColor=white)](#)
+[![Work Mail](https://img.shields.io/badge/Work_Mail-4a0e8f?style=for-the-badge&logo=maildotru&logoColor=white)](#)
+[![Instagram](https://img.shields.io/badge/Instagram-E4405F?style=for-the-badge&logo=instagram&logoColor=white)](#)
 
 <br/>
 
-<img src="https://user-images.githubusercontent.com/73097560/115834477-dbab4500-a447-11eb-908a-139a6edaec5c.gif" width="100%"/>
+<img src="https://capsule-render.vercel.app/api?type=waving&color=0:4a0e8f,100:03001e&height=120&section=footer" width="100%"/>
 
-<img src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=300&size=13&duration=4000&pause=2000&color=9d6fff&center=true&vCenter=true&width=820&height=28&lines=PAI+%7C+Personal+Artificial+Intelligence+%7C+ik-awais.github.io+%7C+aigenmat.com" alt="Footer" />
+<img src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=300&size=13&duration=4000&pause=2000&color=9d6fff&center=true&vCenter=true&width=820&height=28&lines=PAI+%7C+Personal+Artificial+Intelligence" alt="Footer" />
 
 <br/>
 
-**[ik-awais.github.io](https://ik-awais.github.io)** &nbsp;·&nbsp; **[m.awais@aigenmat.com](mailto:m.awais@aigenmat.com)** &nbsp;·&nbsp; **[aigenmat.com](https://aigenmat.com)**
+**[Portfolio Link]** &nbsp;·&nbsp; **[Email]** &nbsp;·&nbsp; **[Company/Site Link]**
 
 </div>
