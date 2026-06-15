@@ -18,7 +18,7 @@
 """
 import sys
 import tkinter as tk
-from Tools.file_workshop.ai_workshop.ui.app import AIWorkshopApp
+from ui.app import AIWorkshopApp
 def main():
     root = AIWorkshopApp()
     root.mainloop()

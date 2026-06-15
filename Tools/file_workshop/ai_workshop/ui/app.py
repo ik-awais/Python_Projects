@@ -18,8 +18,10 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, scrolledtext, ttk
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from Tools.file_workshop.ai_workshop.config import DARK as C, FONTS as F, load_config, save_config, GEMINI_MODELS
-from Tools.file_workshop.ai_workshop.core.processor import (
+from config import DARK as C, FONTS as F, load_config, save_config, GEMINI_MODELS
+
+# Cleaned module imports below (Removed "Tools.file_workshop.ai_workshop.")
+from core.processor import (
     cat, cat_icon, parse_pages, parse_groups, do_convert, preview_convert_paths,
     pdf_page_count, pptx_slide_count,
     split_each, split_range, split_custom,
@@ -34,10 +36,10 @@ from Tools.file_workshop.ai_workshop.core.processor import (
     HAS_PDF2IMAGE, HAS_FFMPEG, HAS_OPENPYXL, HAS_PPTX, HAS_LIBREOFFICE, HAS_CAIROSVG,
     IMAGE_EXTS, AUDIO_EXTS, VIDEO_EXTS, EXCEL_EXTS, PPTX_EXTS, CSV_EXTS
 )
-from Tools.file_workshop.ai_workshop.ai.gemini import GeminiClient, HAS_GENAI
-from Tools.file_workshop.ai_workshop.ai.nvidia_nim import NIMClient, HAS_NIM, NIM_MODELS
-from Tools.file_workshop.ai_workshop.ai.extractor import extract_text, get_file_summary_context, is_image, is_text_extractable
-from Tools.file_workshop.ai_workshop.utils.upscaler import upscale_image, batch_upscale, get_image_info, SCALE_METHODS, HAS_PIL as UP_PIL
+from ai.gemini import GeminiClient, HAS_GENAI
+from ai.nvidia_nim import NIMClient, HAS_NIM, NIM_MODELS
+from ai.extractor import extract_text, get_file_summary_context, is_image, is_text_extractable
+from utils.upscaler import upscale_image, batch_upscale, get_image_info, SCALE_METHODS, HAS_PIL as UP_PIL
 
 # ── Palette shortcuts ──────────────────────────────────────────────────────────
 BG      = C["bg"]

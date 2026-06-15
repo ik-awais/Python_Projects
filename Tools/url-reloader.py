@@ -46,7 +46,7 @@ def reload_profile_with_chromium(url, iterations):
     print("\nAll iterations processed successfully!")
 
 if __name__ == "__main__":
-    TARGET_PROFILE = "https://github.com/ik-awais"
+    TARGET_PROFILE = ""
     TOTAL_RUNS = 405
     
     reload_profile_with_chromium(TARGET_PROFILE, TOTAL_RUNS)
