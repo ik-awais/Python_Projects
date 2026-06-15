@@ -572,4 +572,4 @@ A production-ready RAG system for uploading PDF, DOCX, and TXT documents and ask
 </div>
 
 <!-- CAPSULE RENDER ANIMATED FOOTER -->
-<img src="https://capsule-render.vercel.app/api?type=waving&color=0:0e4f8f,50:0b1a30,100:03001e&height=130&section=footer&text=Built%20with%20%E2%9D%A4%EF%B8%8F%20for%20Students%20%26%20Researchers&fontSize=18&fontColor=00c8ff&fontAlignY=65&animation=fadeIn" width="100%"/>
+<img src="https://capsule-render.vercel.app/api?type=waving&color=0:4a0e8f,50:0b0630,100:03001e&height=130&section=footer&text=Building%20the%20Future%20with%20AI&fontSize=20&fontColor=00c8ff&fontAlignY=65&animation=fadeIn" width="100%"/>
